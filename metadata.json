@@ -1,0 +1,7 @@
+{
+  "name": "My Skin Diary (Noble Edition)",
+  "description": "A sophisticated, feminine minimalist skincare tracker tailored for specific beauty device routines and product management.",
+  "requestFramePermissions": [
+    "camera"
+  ]
+}
