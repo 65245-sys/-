@@ -210,78 +210,58 @@ const App: React.FC = () => {
           }
       }));
   };
-
     const generateAIFeedback = async (note: string, conditions: string[]) => {
         setIsGeneratingAI(true);
         try {
-          // 1. 改用你的 Cloudflare Worker 網址
+          // 👇 1. 這裡改成你的 Worker 網址 (請確認網址是你剛剛複製的那一個)
           const workerUrl = "https://skincare.65245.workers.dev";
 
-          const prompt = `
-            你是一位專業、優雅且富有同理心的皮膚科美容顧問。
-            
-            [使用者資料]
-            今日膚況: ${conditions.length > 0 ? conditions.join(', ') : '未特別標註'}
-            日記備註: "${note}"
+          // 👇 2. 準備要傳給 AI 的文字
+          const promptText = `你是一位專業、優雅且富有同理心的皮膚科美容顧問。
 
-            請以 **JSON 格式** 回傳分析，包含以下欄位：
-            
-            1. "title": 一句優雅、充滿詩意的短標語 (例如：讓肌膚深呼吸的時刻)。
-            2. "content": **不需要列出具體產品步驟**。請專注於「情緒價值」與「深層保養原理」。
-              - 請將內容控制在 **約 200 字以內**。
-              - 務必 **分段撰寫** (在 JSON 字串中使用 \\n\\n 換行)，至少分為 2 段。
-              - 內容包含：對膚況的同理、簡短的成因分析與保養建議。
-              - 語氣保持溫柔、高雅、專業。
-            3. "actionItem": 一個具體、簡單的改善小撇步 (例如：多喝一杯溫水，或早點休息)。
-            4. "historyStory": 一則 **簡短有趣的世界歷史小故事** (約 50-80 字)，內容不限，可以是關於美、生活、文化或冷知識，作為增廣見聞的小單元。
-            5. "quote": 一句適合今天的名言佳句 (關於愛自己、美麗、自信或生活哲學)，作為座右銘。
+    [使用者資料]
+    今日膚況: ${conditions.length > 0 ? conditions.join(', ') : '未特別標註'}
+    日記備註: "${note}"
 
-            Response Format:
-            {
-              "title": "...",
-              "content": "...",
-              "actionItem": "...",
-              "historyStory": "...",
-              "quote": "..."
-            }
-          `;
+    請以 **JSON 格式** 回傳分析，包含以下欄位：
+    1. "title": 一句優雅、充滿詩意的短標語。
+    2. "content": 專注於「情緒價值」與「深層保養原理」的建議 (約 200 字)。`;
 
-          // 2. 使用 fetch 發送請求給 Worker (取代原本的 ai.models.generateContent)
+          // 👇 3. 關鍵！改用 fetch 發送給你的 Worker，而不是直接用 Google SDK
           const response = await fetch(workerUrl, {
             method: "POST",
-            headers: { "Content-Type": "application/json" },
+            headers: {
+              "Content-Type": "application/json",
+            },
             body: JSON.stringify({
-              contents: [{ parts: [{ text: prompt }] }]
-            })
+              contents: [{ parts: [{ text: promptText }] }]
+            }),
           });
 
           if (!response.ok) {
-            throw new Error(`AI 連線失敗: ${response.status}`);
+            throw new Error(`Worker Error: ${response.status}`);
           }
 
           const data = await response.json();
-
-          // 3. 解析回傳資料 (從 Google 的結構中取出文字)
-          let feedback = data.candidates?.[0]?.content?.parts?.[0]?.text;
           
-          if (feedback) {
-            // 4. 清理可能多餘的 Markdown 符號 (避免 JSON 解析失敗)
-            // 有時候 AI 會雞婆地加上 ```json ... ```，這裡把它去掉
-            feedback = feedback.replace(/^```json\s*|\s*```$/g, "").trim();
+          // 👇 4. 解析回傳的資料
+          const aiText = data.candidates?.[0]?.content?.parts?.[0]?.text;
+          
+          // 嘗試清理並解析 JSON (有時候 AI 會多包一層 markdown 符號)
+          const jsonStr = aiText.replace(/```json|```/g, "").trim();
+          const result = JSON.parse(jsonStr);
 
-            setLogs(prev => ({
-              ...prev,
-              [dateKey]: {
-                ...prev[dateKey],
-                aiFeedback: feedback
-              }
-            }));
-          }
+          setAiFeedback({
+            title: result.title || "肌膚的輕聲細語",
+            content: result.content || "暫時無法讀取建議，請稍後再試。",
+          });
 
         } catch (error) {
-          console.error("AI Generation Error", error);
-          // 建議：這裡可以加一個 alert 或是 toast 通知使用者錯誤
-          // alert("AI 分析暫時無法使用，請稍後再試");
+          console.error("AI Generation Error:", error);
+          setAiFeedback({
+            title: "連線小狀況",
+            content: "目前無法連線到 AI 助理，請檢查網路或稍後再試。",
+          });
         } finally {
           setIsGeneratingAI(false);
         }
