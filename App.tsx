@@ -1,6 +1,5 @@
 import React, { useState, useEffect, useRef } from 'react';
 import { Calendar, Plus, CheckCircle, Undo2, ChevronLeft, ChevronRight, Moon, Sun, Edit3, Save, Sparkles, Archive, Loader2, Quote, ArrowRight, Settings2, CalendarDays, BookOpen, Feather } from 'lucide-react';
-import { GoogleGenAI } from "@google/genai";
 import { DailyLog, DailyLogsMap, Product, RoutineType, MachineMode, DayRoutine } from './types';
 import { getDisplayDate, formatDateKey, isSameDay } from './utils/dateUtils';
 import { getRoutineForDay, INITIAL_PRODUCTS, analyzeProductInput, getOptimalProductOrder, PRODUCT_ORDER_WEIGHTS, PRODUCT_TAGS, DEFAULT_WEEKLY_SCHEDULE, getThemeType } from './utils/routineLogic';
@@ -212,64 +211,81 @@ const App: React.FC = () => {
       }));
   };
 
-  const generateAIFeedback = async (note: string, conditions: string[]) => {
-    setIsGeneratingAI(true);
-    try {
-      const ai = new GoogleGenAI({ apiKey: process.env.API_KEY });
-      const prompt = `
-        你是一位專業、優雅且富有同理心的皮膚科美容顧問。
-        
-        [使用者資料]
-        今日膚況: ${conditions.length > 0 ? conditions.join(', ') : '未特別標註'}
-        日記備註: "${note}"
+    const generateAIFeedback = async (note: string, conditions: string[]) => {
+        setIsGeneratingAI(true);
+        try {
+          // 1. 改用你的 Cloudflare Worker 網址
+          const workerUrl = "https://skincare.65245.workers.dev";
 
-        請以 **JSON 格式** 回傳分析，包含以下欄位：
-        
-        1. "title": 一句優雅、充滿詩意的短標語 (例如：讓肌膚深呼吸的時刻)。
-        2. "content": **不需要列出具體產品步驟**。請專注於「情緒價值」與「深層保養原理」。
-           - 請將內容控制在 **約 200 字以內**。
-           - 務必 **分段撰寫** (在 JSON 字串中使用 \\n\\n 換行)，至少分為 2 段。
-           - 內容包含：對膚況的同理、簡短的成因分析與保養建議。
-           - 語氣保持溫柔、高雅、專業。
-        3. "actionItem": 一個具體、簡單的改善小撇步 (例如：多喝一杯溫水，或早點休息)。
-        4. "historyStory": 一則 **簡短有趣的世界歷史小故事** (約 50-80 字)，內容不限，可以是關於美、生活、文化或冷知識，作為增廣見聞的小單元。
-        5. "quote": 一句適合今天的名言佳句 (關於愛自己、美麗、自信或生活哲學)，作為座右銘。
+          const prompt = `
+            你是一位專業、優雅且富有同理心的皮膚科美容顧問。
+            
+            [使用者資料]
+            今日膚況: ${conditions.length > 0 ? conditions.join(', ') : '未特別標註'}
+            日記備註: "${note}"
 
-        Response Format:
-        {
-          "title": "...",
-          "content": "...",
-          "actionItem": "...",
-          "historyStory": "...",
-          "quote": "..."
-        }
-      `;
+            請以 **JSON 格式** 回傳分析，包含以下欄位：
+            
+            1. "title": 一句優雅、充滿詩意的短標語 (例如：讓肌膚深呼吸的時刻)。
+            2. "content": **不需要列出具體產品步驟**。請專注於「情緒價值」與「深層保養原理」。
+              - 請將內容控制在 **約 200 字以內**。
+              - 務必 **分段撰寫** (在 JSON 字串中使用 \\n\\n 換行)，至少分為 2 段。
+              - 內容包含：對膚況的同理、簡短的成因分析與保養建議。
+              - 語氣保持溫柔、高雅、專業。
+            3. "actionItem": 一個具體、簡單的改善小撇步 (例如：多喝一杯溫水，或早點休息)。
+            4. "historyStory": 一則 **簡短有趣的世界歷史小故事** (約 50-80 字)，內容不限，可以是關於美、生活、文化或冷知識，作為增廣見聞的小單元。
+            5. "quote": 一句適合今天的名言佳句 (關於愛自己、美麗、自信或生活哲學)，作為座右銘。
 
-      const response = await ai.models.generateContent({
-        model: 'gemini-3-flash-preview',
-        contents: prompt,
-        config: { responseMimeType: 'application/json' }
-      });
+            Response Format:
+            {
+              "title": "...",
+              "content": "...",
+              "actionItem": "...",
+              "historyStory": "...",
+              "quote": "..."
+            }
+          `;
 
-      const feedback = response.text;
-      
-      if (feedback) {
-        setLogs(prev => ({
-          ...prev,
-          [dateKey]: {
-            ...prev[dateKey],
-            aiFeedback: feedback
+          // 2. 使用 fetch 發送請求給 Worker (取代原本的 ai.models.generateContent)
+          const response = await fetch(workerUrl, {
+            method: "POST",
+            headers: { "Content-Type": "application/json" },
+            body: JSON.stringify({
+              contents: [{ parts: [{ text: prompt }] }]
+            })
+          });
+
+          if (!response.ok) {
+            throw new Error(`AI 連線失敗: ${response.status}`);
           }
-        }));
-      }
 
-    } catch (error) {
-      console.error("AI Generation Error", error);
-    } finally {
-      setIsGeneratingAI(false);
-    }
-  };
+          const data = await response.json();
 
+          // 3. 解析回傳資料 (從 Google 的結構中取出文字)
+          let feedback = data.candidates?.[0]?.content?.parts?.[0]?.text;
+          
+          if (feedback) {
+            // 4. 清理可能多餘的 Markdown 符號 (避免 JSON 解析失敗)
+            // 有時候 AI 會雞婆地加上 ```json ... ```，這裡把它去掉
+            feedback = feedback.replace(/^```json\s*|\s*```$/g, "").trim();
+
+            setLogs(prev => ({
+              ...prev,
+              [dateKey]: {
+                ...prev[dateKey],
+                aiFeedback: feedback
+              }
+            }));
+          }
+
+        } catch (error) {
+          console.error("AI Generation Error", error);
+          // 建議：這裡可以加一個 alert 或是 toast 通知使用者錯誤
+          // alert("AI 分析暫時無法使用，請稍後再試");
+        } finally {
+          setIsGeneratingAI(false);
+        }
+      };
   const addProduct = (p: Product) => {
     setProducts(prev => {
         // Assign new product to the end of the list
