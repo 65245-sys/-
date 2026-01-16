@@ -40,8 +40,8 @@ const ThemeFlowerPattern = ({ themeName }: { themeName: string }) => {
     const type = getThemeType(themeName);
 
     // [圖片欄位設定] - 使用者指定的圖片
-    const themeImages = {
-        PORE: "https://i.ibb.co/GQVS5HpK/Gemini-Generated-Image-33a1lz33a1lz33a1.png", 
+    const themeImages: Record<string, string> = {
+        PORE: "https://i.ibb.co/GQVS5HpK/Gemini-Generated-Image-33a1lz33a1lz33a1.png",
         LIFTING: "https://i.ibb.co/ccL0sjyw/Gemini-Generated-Image-llis6tllis6tllis.png",
         PLUMPING: "https://i.ibb.co/99NrBg9H/Gemini-Generated-Image-b0gs8ub0gs8ub0gs.png",
         ACID: "https://i.ibb.co/x8td9hTN/Gemini-Generated-Image-5e5pep5e5pep5e5p.png",
@@ -52,7 +52,7 @@ const ThemeFlowerPattern = ({ themeName }: { themeName: string }) => {
     const imageUrl = themeImages[type] || themeImages.DEFAULT;
 
     return (
-        <div 
+        <div
             className="absolute right-0 top-0 bottom-0 w-3/4 md:w-2/3 pointer-events-none"
             style={{
                 // Standard CSS mask-image for fading effect (Left to Right: Transparent -> Opaque)
@@ -60,9 +60,9 @@ const ThemeFlowerPattern = ({ themeName }: { themeName: string }) => {
                 WebkitMaskImage: 'linear-gradient(to left, black 0%, transparent 100%)'
             }}
         >
-            <img 
-                src={imageUrl} 
-                alt="Theme Background" 
+            <img
+                src={imageUrl}
+                alt="Theme Background"
                 // mix-blend-multiply: 讓白色背景變透明，融入卡片底色
                 // opacity-50: 稍微調低透明度，呈現浮水印質感
                 className="w-full h-full object-cover object-center opacity-50 mix-blend-multiply contrast-110"
@@ -140,7 +140,7 @@ const App: React.FC = () => {
     }));
 
     setProducts(loadedProducts);
-    isLoaded.current = true; 
+    isLoaded.current = true;
   }, []);
 
   // Persistence (Save)
@@ -222,10 +222,13 @@ const App: React.FC = () => {
     今日膚況: ${conditions.length > 0 ? conditions.join(', ') : '未標註'}
     日記備註: "${note}"
 
-    請回傳 JSON 格式：
+    請回傳 JSON 格式，包含以下欄位：
     {
       "title": "一句優雅的標題",
-      "content": "200字以內的保養建議"
+      "content": "200字以內的保養建議",
+      "actionItem": "一個具體的行動建議 (例如：今晚多敷一片保濕面膜)",
+      "historyStory": "一個與美容保養相關的歷史趣聞或文化小故事 (100字以內)",
+      "quote": "一句與美麗或自我照顧相關的優雅名言"
     }`;
 
           // 3. 發送請求
@@ -244,15 +247,12 @@ const App: React.FC = () => {
 
           const data = await response.json();
 
-          // 🚨🚨🚨【超級偵探功能】在這裡！🚨🚨🚨
-          // 如果 Google 回傳錯誤，這裡會直接跳出視窗告訴你原因
           if (data.error) {
             alert(`Google 拒絕請求！\n錯誤代碼: ${data.error.code}\n錯誤訊息: ${data.error.message}`);
             setIsGeneratingAI(false);
-            return; // 停在這裡，不要再往下跑了
+            return;
           }
 
-          // 5. 如果沒有錯誤，才開始讀取資料
           const aiText = data.candidates?.[0]?.content?.parts?.[0]?.text;
           
           if (!aiText) {
@@ -263,14 +263,15 @@ const App: React.FC = () => {
           const jsonStr = aiText.replace(/```json|```/g, "").trim();
           const result = JSON.parse(jsonStr);
 
+          // 儲存所有欄位到 aiFeedback 狀態中
           setAiFeedback({
             title: result.title || "肌膚的輕聲細語",
             content: result.content || "暫時無法讀取建議。",
+            ...result // 把 actionItem, historyStory, quote 也存進去
           });
 
         } catch (error: any) {
           console.error("AI Error:", error);
-          // 顯示最後的錯誤訊息
           alert("發生意外錯誤：\n" + error.message);
           
           setAiFeedback({
@@ -312,7 +313,7 @@ const App: React.FC = () => {
               list[index].order = list[index + 1].order;
               list[index + 1].order = temp;
           }
-          return [...list]; 
+          return [...list];
       });
   };
 
@@ -341,8 +342,8 @@ const App: React.FC = () => {
 
     const performLocalSort = (currentProducts: Product[]) => {
         // 1. Identify products that belong to this scope
-        // We include 'BOTH' because they need to be sorted within this routine, 
-        // but this logic preserves the "slots" used by these items so it doesn't 
+        // We include 'BOTH' because they need to be sorted within this routine,
+        // but this logic preserves the "slots" used by these items so it doesn't
         // arbitrarily push pure-other-scope items around.
         const scopeProducts = currentProducts.filter(p => {
              if (scope === 'MORNING') return p.timing === 'MORNING' || p.timing === 'BOTH';
@@ -399,18 +400,6 @@ const App: React.FC = () => {
       setSelectedDate(date);
   };
 
-  // Helper to parse AI Feedback
-  const parseFeedback = (jsonString: string) => {
-      try {
-          return JSON.parse(jsonString);
-      } catch (e) {
-          // Fallback if not JSON
-          return { content: jsonString };
-      }
-  };
-
-  const feedbackData = currentLog?.aiFeedback ? parseFeedback(currentLog.aiFeedback) : null;
-
   return (
     <div className="min-h-screen pb-24 font-sans text-gray-800 selection:bg-rose-200">
       
@@ -423,14 +412,14 @@ const App: React.FC = () => {
             <p className="text-[10px] text-rose-400 font-bold tracking-[0.2em] uppercase mt-1">Noble Edition</p>
           </div>
           <div className="flex gap-3">
-            <button 
+            <button
               onClick={() => setIsProductManagerOpen(true)}
               className="bg-white/50 text-rose-400 p-2.5 rounded-full hover:bg-white hover:text-rose-500 transition-all shadow-sm border border-rose-100 hover:shadow-md"
               aria-label="我的保養櫃"
             >
               <Archive size={20} />
             </button>
-            <button 
+            <button
               onClick={() => setIsCalendarOpen(true)}
               className="bg-white/50 text-rose-400 p-2.5 rounded-full hover:bg-white hover:text-rose-500 transition-all shadow-sm border border-rose-100 hover:shadow-md"
               aria-label="開啟月曆"
@@ -442,9 +431,9 @@ const App: React.FC = () => {
         {/* Timeline */}
         <section className="bg-white/30 backdrop-blur-md border-b border-white/20 shadow-sm transition-all py-1 relative z-10">
           <div className="max-w-6xl mx-auto">
-              <Timeline 
-                  selectedDate={selectedDate} 
-                  onSelectDate={handleDateChange} 
+              <Timeline
+                  selectedDate={selectedDate}
+                  onSelectDate={handleDateChange}
                   completedDates={Object.keys(logs).filter(k => logs[k].completed)}
               />
           </div>
@@ -492,14 +481,14 @@ const App: React.FC = () => {
                             <Sparkles size={18} className="text-rose-400"/> 美容儀模式
                         </h3>
                         <div className="flex gap-1">
-                             <button 
+                             <button
                                 onClick={() => setIsScheduleModalOpen(true)}
                                 className="p-2 rounded-full text-gray-400 hover:text-rose-500 hover:bg-rose-50/50 transition-colors"
                                 title="編輯療程安排"
                             >
                                 <CalendarDays size={18} />
                             </button>
-                            <button 
+                            <button
                                 onClick={() => setIsMachineModalOpen(true)}
                                 className="p-2 rounded-full text-gray-400 hover:text-rose-500 hover:bg-rose-50/50 transition-colors"
                                 title="今日調整"
@@ -509,7 +498,7 @@ const App: React.FC = () => {
                         </div>
                     </div>
                     <MachineIndicator modes={activeMachineModes} />
-                    <button 
+                    <button
                          onClick={() => setIsMachineModalOpen(true)}
                          className="w-full mt-4 py-2.5 text-xs font-bold text-rose-500 bg-rose-50/50 border border-rose-100/50 rounded-xl hover:bg-rose-100/50 transition-colors flex items-center justify-center gap-1"
                     >
@@ -533,7 +522,7 @@ const App: React.FC = () => {
                     </div>
                 </div>
                 <div className="flex-1">
-                    <ProductList 
+                    <ProductList
                         products={products}
                         type="MORNING"
                         dayOfWeek={selectedDate.getDay()}
@@ -558,7 +547,7 @@ const App: React.FC = () => {
                     </div>
                 </div>
                 <div className="flex-1">
-                    <ProductList 
+                    <ProductList
                         products={products}
                         type="EVENING"
                         dayOfWeek={selectedDate.getDay()}
@@ -570,7 +559,7 @@ const App: React.FC = () => {
                     />
                 </div>
                 
-                <button 
+                <button
                     onClick={() => {
                         setEditingProduct(null);
                         setIsModalOpen(true);
@@ -600,7 +589,7 @@ const App: React.FC = () => {
                 </div>
 
                 {/* Skin Condition Selector */}
-                <SkinConditionSelector 
+                <SkinConditionSelector
                     selected={skinConditionInput}
                     onChange={setSkinConditionInput}
                 />
@@ -613,7 +602,7 @@ const App: React.FC = () => {
                 />
                 
                 <div className="flex justify-end">
-                    <button 
+                    <button
                         onClick={saveJournal}
                         disabled={isGeneratingAI || (!noteInput.trim() && skinConditionInput.length === 0)}
                         className="flex items-center gap-2 px-8 py-3.5 bg-gradient-to-r from-rose-400 to-rose-500 text-white font-bold rounded-2xl shadow-lg shadow-rose-200 hover:shadow-rose-300 hover:-translate-y-0.5 disabled:opacity-50 disabled:cursor-not-allowed transition-all active:scale-95 disabled:active:scale-100 disabled:hover:translate-y-0"
@@ -625,25 +614,77 @@ const App: React.FC = () => {
                         )}
                     </button>
                 </div>
-          {aiFeedback && (
-                  <div className="mt-6 p-6 bg-gradient-to-r from-rose-50 to-orange-50 rounded-2xl border border-rose-100 shadow-sm animate-fade-in">
-                    <div className="flex items-start gap-4">
-                      <div className="p-3 bg-white rounded-full shadow-sm">
-                        <Sparkles className="w-6 h-6 text-rose-400" />
-                      </div>
-                      <div className="flex-1">
-                        <h3 className="text-lg font-serif font-medium text-gray-800 mb-2">
-                          {aiFeedback.title}
-                        </h3>
-                        <p className="text-gray-600 leading-relaxed text-sm">
-                          {aiFeedback.content}
-                        </p>
-                      </div>
+                
+                {/* AI Feedback Section (豪華版) */}
+                {aiFeedback && (
+                    <div className="animate-[fadeIn_0.5s_ease-out] mt-8 pt-8 border-t border-rose-100/50">
+                        <div className="glass-panel rounded-3xl border border-white/60 shadow-xl overflow-hidden relative">
+                            {/* Shimmer overlay */}
+                            <div className="absolute inset-0 bg-gradient-to-br from-white/40 via-transparent to-rose-50/30 pointer-events-none"></div>
+
+                            {/* 1. Header & Title */}
+                            <div className="px-8 py-6 border-b border-rose-100/50 flex items-center gap-4 relative z-10">
+                                 <div className="bg-gradient-to-br from-rose-100 to-pink-200 p-3 rounded-2xl text-rose-600 shadow-sm ring-4 ring-rose-50">
+                                    <Sparkles size={22} />
+                                 </div>
+                                 <div>
+                                     <h4 className="font-serif text-rose-900 font-bold text-2xl tracking-wide">
+                                         {aiFeedback.title || "AI 美容顧問"}
+                                     </h4>
+                                     <p className="text-xs text-rose-400 uppercase tracking-widest font-medium mt-1">Personalized Analysis</p>
+                                 </div>
+                            </div>
+
+                            <div className="p-8 space-y-8 relative z-10">
+                                {/* 2. Diagnosis Content */}
+                                <div className="relative pl-6 border-l-2 border-rose-200">
+                                    <Quote size={32} className="absolute -top-4 -left-5 text-rose-200/50 fill-rose-100" />
+                                    <p className="text-gray-600 text-[15px] leading-8 font-light whitespace-pre-line">
+                                        {aiFeedback.content}
+                                    </p>
+                                </div>
+
+                                {/* 3. Action Item */}
+                                {(aiFeedback as any).actionItem && (
+                                    <div className="bg-gradient-to-r from-rose-50/80 to-white border border-rose-100 rounded-2xl p-5 flex items-start gap-4 shadow-sm">
+                                        <div className="mt-1 bg-rose-500 text-white text-[10px] px-2.5 py-1 rounded-md font-bold shrink-0 tracking-wider shadow-sm">
+                                            ACTION
+                                        </div>
+                                        <p className="text-rose-800 font-medium text-base">
+                                            {(aiFeedback as any).actionItem}
+                                        </p>
+                                    </div>
+                                )}
+
+                                {/* 4. History Story */}
+                                {(aiFeedback as any).historyStory && (
+                                    <div className="pt-2">
+                                        <div className="bg-blue-50/60 rounded-xl p-5 border border-blue-100/50 flex items-start gap-4 text-sm text-gray-600 group hover:bg-blue-50 transition-colors">
+                                             <div className="bg-white p-2 rounded-full shadow-sm text-blue-400 group-hover:scale-110 transition-transform mt-0.5">
+                                                <BookOpen size={20} />
+                                             </div>
+                                             <div className="flex-1">
+                                                 <span className="text-[10px] font-bold text-blue-400 uppercase tracking-widest block mb-2">History & Culture</span>
+                                                 <span className="leading-relaxed font-light text-gray-700 text-[15px]">{(aiFeedback as any).historyStory}</span>
+                                             </div>
+                                        </div>
+                                    </div>
+                                )}
+
+                                {/* 5. Quote Section */}
+                                {(aiFeedback as any).quote && (
+                                    <div className="mt-6 pt-6 border-t border-rose-100/50 flex flex-col items-center justify-center text-center">
+                                        <Feather size={18} className="text-rose-300 mb-2" />
+                                        <p className="font-serif italic text-gray-600 text-lg leading-relaxed">
+                                            "{(aiFeedback as any).quote}"
+                                        </p>
+                                    </div>
+                                )}
+                            </div>
+                        </div>
                     </div>
-                  </div>
                 )}
             </div>
-            )}
         </section>
 
       </main>
@@ -652,14 +693,14 @@ const App: React.FC = () => {
       <div className="fixed bottom-0 left-0 w-full p-4 bg-white/70 backdrop-blur-xl border-t border-white/50 z-20 shadow-[0_-10px_30px_rgba(0,0,0,0.03)]">
         <div className="max-w-md mx-auto">
             {isCompleted ? (
-                <button 
+                <button
                     onClick={toggleComplete}
                     className="w-full flex items-center justify-center gap-2 py-4 rounded-2xl bg-gray-100/80 text-gray-500 font-bold text-lg shadow-inner active:scale-98 transition-all hover:bg-gray-200/80"
                 >
                     <Undo2 size={20} /> 撤銷完成 (Undo)
                 </button>
             ) : (
-                <button 
+                <button
                     onClick={toggleComplete}
                     className="w-full flex items-center justify-center gap-2 py-4 rounded-2xl bg-gradient-to-r from-rose-400 to-rose-600 text-white font-bold text-lg shadow-lg shadow-rose-200 hover:shadow-rose-300 hover:-translate-y-0.5 active:scale-95 transition-all"
                 >
@@ -670,10 +711,10 @@ const App: React.FC = () => {
       </div>
 
       {/* Modals */}
-      <AddProductModal 
-        isOpen={isModalOpen} 
+      <AddProductModal
+        isOpen={isModalOpen}
         onClose={handleCloseModal}
-        onAdd={addProduct} 
+        onAdd={addProduct}
         onUpdate={updateProduct}
         initialProduct={editingProduct}
       />
@@ -708,7 +749,7 @@ const App: React.FC = () => {
         onSave={handleSaveSchedule}
       />
 
-      <MonthCalendar 
+      <MonthCalendar
         isOpen={isCalendarOpen}
         onClose={() => setIsCalendarOpen(false)}
         logs={logs}
