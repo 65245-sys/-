@@ -213,54 +213,68 @@ const App: React.FC = () => {
     const generateAIFeedback = async (note: string, conditions: string[]) => {
         setIsGeneratingAI(true);
         try {
-          // 👇 1. 這裡改成你的 Worker 網址 (請確認網址是你剛剛複製的那一個)
+          // 1. 設定 Cloudflare Worker 網址
           const workerUrl = "https://skincare.65245.workers.dev";
 
-          // 👇 2. 準備要傳給 AI 的文字
-          const promptText = `你是一位專業、優雅且富有同理心的皮膚科美容顧問。
-
-    [使用者資料]
-    今日膚況: ${conditions.length > 0 ? conditions.join(', ') : '未特別標註'}
+          // 2. 準備提示詞
+          const promptText = `你是一位專業皮膚科顧問。
+    今日膚況: ${conditions.length > 0 ? conditions.join(', ') : '未標註'}
     日記備註: "${note}"
 
-    請以 **JSON 格式** 回傳分析，包含以下欄位：
-    1. "title": 一句優雅、充滿詩意的短標語。
-    2. "content": 專注於「情緒價值」與「深層保養原理」的建議 (約 200 字)。`;
+    請回傳 JSON 格式：
+    {
+      "title": "一句優雅的標題",
+      "content": "200字以內的保養建議"
+    }`;
 
-          // 👇 3. 關鍵！改用 fetch 發送給你的 Worker，而不是直接用 Google SDK
+          // 3. 發送請求
           const response = await fetch(workerUrl, {
             method: "POST",
-            headers: {
-              "Content-Type": "application/json",
-            },
+            headers: { "Content-Type": "application/json" },
             body: JSON.stringify({
               contents: [{ parts: [{ text: promptText }] }]
             }),
           });
 
+          // 4. 檢查 Cloudflare 是否連線成功
           if (!response.ok) {
-            throw new Error(`Worker Error: ${response.status}`);
+            throw new Error(`Worker 連線失敗: ${response.status}`);
           }
 
           const data = await response.json();
-          
-          // 👇 4. 解析回傳的資料
+
+          // 🚨🚨🚨【超級偵探功能】在這裡！🚨🚨🚨
+          // 如果 Google 回傳錯誤，這裡會直接跳出視窗告訴你原因
+          if (data.error) {
+            alert(`Google 拒絕請求！\n錯誤代碼: ${data.error.code}\n錯誤訊息: ${data.error.message}`);
+            setIsGeneratingAI(false);
+            return; // 停在這裡，不要再往下跑了
+          }
+
+          // 5. 如果沒有錯誤，才開始讀取資料
           const aiText = data.candidates?.[0]?.content?.parts?.[0]?.text;
           
-          // 嘗試清理並解析 JSON (有時候 AI 會多包一層 markdown 符號)
+          if (!aiText) {
+            alert("Google 有回應，但內容是空的！\n完整回應：" + JSON.stringify(data));
+            throw new Error("AI 回應為空");
+          }
+
           const jsonStr = aiText.replace(/```json|```/g, "").trim();
           const result = JSON.parse(jsonStr);
 
           setAiFeedback({
             title: result.title || "肌膚的輕聲細語",
-            content: result.content || "暫時無法讀取建議，請稍後再試。",
+            content: result.content || "暫時無法讀取建議。",
           });
 
-        } catch (error) {
-          console.error("AI Generation Error:", error);
+        } catch (error: any) {
+          console.error("AI Error:", error);
+          // 顯示最後的錯誤訊息
+          alert("發生意外錯誤：\n" + error.message);
+          
           setAiFeedback({
             title: "連線小狀況",
-            content: "目前無法連線到 AI 助理，請檢查網路或稍後再試。",
+            content: "目前無法連線到 AI 助理。",
           });
         } finally {
           setIsGeneratingAI(false);
