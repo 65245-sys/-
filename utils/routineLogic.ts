@@ -1,18 +1,16 @@
 import { DayRoutine, Product, ProductSuggestionResult, MachineMode } from '../types';
 
-// ✅ Cloudflare Worker 網址 (保護 API Key，不直接在前端使用 SDK)
+// ✅ Cloudflare Worker 網址
 const WORKER_URL = "https://skincare.65245.workers.dev";
 
 // ==========================================
-// 1. 產品相關定義 (保留你的權重與邏輯)
+// 1. 產品相關定義
 // ==========================================
-
-// 為了相容你的 App.tsx，我們需要這個 ID 對照表
 export const PRODUCT_TYPE_LABELS: Record<string, string> = {
     'CLEANSER': '潔顏',
     'TONER': '化妝水',
     'ESSENCE': '精華液',
-    'SERUM': '精華液', // 合併
+    'SERUM': '精華液',
     'EYE_CREAM': '眼霜',
     'LOTION': '乳液',
     'CREAM': '乳霜',
@@ -27,14 +25,13 @@ export const PRODUCT_TYPE_LABELS: Record<string, string> = {
 
 export const PRODUCT_TAGS = Object.values(PRODUCT_TYPE_LABELS);
 
-// Weights (保留你的設定，但 Key 對應回 ID)
 export const PRODUCT_ORDER_WEIGHTS: Record<string, number> = {
     'CLEANSER': 10,
     'ACID': 20,
     'TONER': 30,
     'MASK': 35,
-    'ESSENCE': 40, // 前導
-    'SERUM': 40,   // 精華
+    'ESSENCE': 40,
+    'SERUM': 40,
     'RETINOL': 45,
     'EYE_CREAM': 50,
     'LOTION': 55,
@@ -44,13 +41,11 @@ export const PRODUCT_ORDER_WEIGHTS: Record<string, number> = {
     'OTHER': 90
 };
 
-// Helper: 取得排序
 export const getOptimalProductOrder = (productType?: string): number => {
     if (!productType) return 99;
     return PRODUCT_ORDER_WEIGHTS[productType] || 99;
 };
 
-// ✅ 你的 INITIAL_PRODUCTS (已轉為 ID 以相容 Modal)
 export const INITIAL_PRODUCTS: Product[] = [
   { id: 'init-1', name: 'SK-II 洗面乳', timing: 'EVENING', days: [0,1,2,3,4,5,6], productType: 'CLEANSER', order: 0, isCustom: false },
   { id: 'init-2', name: 'Zero Pore Pad / 酸類精華', timing: 'EVENING', days: [6], productType: 'ACID', order: 1, isCustom: false },
@@ -64,7 +59,6 @@ export const INITIAL_PRODUCTS: Product[] = [
 // ==========================================
 // 2. 機器與膚況定義
 // ==========================================
-
 export const SKIN_CONDITIONS = [
     '正常', '乾燥脫皮', '出油', '外油內乾',
     '泛紅敏感', '粉刺痘痘', '暗沉無光', '毛孔粗大'
@@ -79,9 +73,8 @@ export const ALL_MACHINE_MODES: MachineMode[] = [
 ];
 
 // ==========================================
-// 3. 主題定義 (⚠️ 這是 App.tsx 必須的，不能刪)
+// 3. 主題定義
 // ==========================================
-
 export const THEME_PRESETS = [
     {
         label: '🌿 毛孔清潔 (Pore Care)',
@@ -138,9 +131,8 @@ export const getThemeType = (themeName: string): 'PORE' | 'LIFTING' | 'PLUMPING'
 };
 
 // ==========================================
-// 4. 分析邏輯 (整合你的 Regex)
+// 4. 分析邏輯
 // ==========================================
-
 export const getDayLabel = (dayIndex: number) => {
     const map = ['日', '一', '二', '三', '四', '五', '六'];
     return map[dayIndex] || '';
@@ -155,7 +147,6 @@ export const getTimingLabel = (t: string) => {
     }
 };
 
-// 內部 Helper: 轉為 ID
 const detectProductTypeID = (name: string): string => {
     const n = name.toLowerCase();
     if (/sun|uv|防曬|隔離/.test(n)) return 'SUNSCREEN';
@@ -175,18 +166,16 @@ export const analyzeProductInput = (name: string): ProductSuggestionResult => {
   const n = name.toLowerCase();
   const typeID = detectProductTypeID(n);
   
-  // 1. Acid / BHA -> Saturday Night
   if (/酸|acid|bha|aha|pha|peel/.test(n)) {
     return {
       timing: 'EVENING',
-      days: [6], // Sat
+      days: [6],
       productType: 'ACID',
       warning: '酸類建議在「週六煥膚日」晚間使用，避開美容儀。',
       reason: '偵測到酸類成分'
     };
   }
 
-  // 2. Vitamin C / Whitening -> Morning Daily
   if (/vit c|維他命c|美白|white|bright/.test(n)) {
     return {
       timing: 'MORNING',
@@ -196,7 +185,6 @@ export const analyzeProductInput = (name: string): ProductSuggestionResult => {
     };
   }
 
-  // 3. Retinol -> Weekdays Evening
   if (/retinol|a醇|a醛|抗老|wrinkle/.test(n)) {
     return {
       timing: 'EVENING',
@@ -207,7 +195,6 @@ export const analyzeProductInput = (name: string): ProductSuggestionResult => {
     };
   }
 
-  // 4. Mask -> Evening
   if (/mask|面膜/.test(n)) {
     return {
       timing: 'EVENING',
@@ -218,7 +205,6 @@ export const analyzeProductInput = (name: string): ProductSuggestionResult => {
     };
   }
   
-  // 5. Heavy Cream / Oil
   if (/oil|cream|balm|油|霜|arden|雅頓/.test(n)) {
      return {
         timing: 'EVENING',
@@ -229,7 +215,6 @@ export const analyzeProductInput = (name: string): ProductSuggestionResult => {
      };
   }
 
-  // Default
   return {
     timing: 'EVENING',
     days: [0,1,2,3,4,5,6],
@@ -238,7 +223,7 @@ export const analyzeProductInput = (name: string): ProductSuggestionResult => {
   };
 };
 
-// ✅ 使用 Worker 進行 AI 分析 (替代直接使用 SDK)
+// ✅ 使用 Worker 進行 AI 分析 (加強版)
 const callWorker = async (payload: any) => {
     try {
         const response = await fetch(WORKER_URL, {
@@ -250,7 +235,21 @@ const callWorker = async (payload: any) => {
         const data = await response.json();
         const text = data.candidates?.[0]?.content?.parts?.[0]?.text;
         if (!text) throw new Error("AI 無法產生回應");
-        return JSON.parse(text.replace(/```json|```/g, "").trim());
+        
+        // 🛡️ 安全解析 JSON
+        try {
+            return JSON.parse(text.replace(/```json|```/g, "").trim());
+        } catch (e) {
+            console.error("AI JSON Parse Error, raw text:", text);
+            // 回傳一個安全預設值，防止當機
+            return {
+                name: "辨識失敗",
+                productType: "OTHER",
+                reason: "AI 回應格式錯誤",
+                timing: "EVENING",
+                days: [0,1,2,3,4,5,6]
+            };
+        }
     } catch (error) {
         console.error("AI API Error:", error);
         throw error;
@@ -258,7 +257,6 @@ const callWorker = async (payload: any) => {
 };
 
 export const analyzeProductWithAI = async (name: string): Promise<ProductSuggestionResult> => {
-    // 簡單轉接給上面的 Regex 邏輯，或擴充 Worker 呼叫
     return analyzeProductInput(name);
 };
 
@@ -293,8 +291,6 @@ export const analyzeProductImage = async (base64Image: string): Promise<ProductS
 // ==========================================
 // 5. 排程資料
 // ==========================================
-
-// ✅ 你的 DEFAULT_WEEKLY_SCHEDULE
 export const DEFAULT_WEEKLY_SCHEDULE: Record<number, DayRoutine> = {
     1: { theme: '毛孔清潔日 (Pore Care)', description: '深度清潔毛孔，加強吸收。請務必在乾臉狀態使用 Air Shot。', machineModes: [ALL_MACHINE_MODES[3], ALL_MACHINE_MODES[0]], isRestDay: false },
     2: { theme: '彈力拉提日 (Lifting)', description: 'EMS 刺激肌肉層，提升輪廓線。', machineModes: [ALL_MACHINE_MODES[2], ALL_MACHINE_MODES[0]], isRestDay: false },
