@@ -14,7 +14,7 @@ interface Props {
 // ✅ Cloudflare Worker 網址
 const WORKER_URL = "https://skincare.65245.workers.dev";
 
-// ✅ 產品類型清單 (中文)
+// ✅ 產品類型對照表 (AI 會回傳 ID，我們自動選中對應按鈕)
 const PRODUCT_TYPE_OPTIONS = [
     { id: 'CLEANSER', label: '潔顏/洗面乳' },
     { id: 'TONER', label: '化妝水/爽膚水' },
@@ -26,35 +26,33 @@ const PRODUCT_TYPE_OPTIONS = [
     { id: 'OIL', label: '保養油' },
     { id: 'SUNSCREEN', label: '防曬/隔離' },
     { id: 'MASK', label: '面膜/凍膜' },
-    { id: 'ACID', label: '酸類煥膚 (杏仁酸等)' },
-    { id: 'RETINOL', label: 'A醇/A醛抗老' },
-    { id: 'SCRUB', label: '去角質/磨砂膏' },
-    { id: 'OTHER', label: '其他特殊護理' },
+    { id: 'ACID', label: '酸類煥膚' },
+    { id: 'RETINOL', label: 'A醇/A醛' },
+    { id: 'SCRUB', label: '去角質' },
+    { id: 'OTHER', label: '其他' },
 ];
 
-// ✅ 新增：快速頻率選項
+// ✅ 頻率設定 (0 是星期日)
 const FREQUENCY_PRESETS = [
     { label: '每天', days: [0, 1, 2, 3, 4, 5, 6] },
     { label: '平日 (一~五)', days: [1, 2, 3, 4, 5] },
-    { label: '週末', days: [0, 6] },
+    { label: '週末 (六日)', days: [0, 6] },
     { label: '做一休一 (1,3,5,日)', days: [1, 3, 5, 0] },
-    { label: '每三天 (一,四,日)', days: [1, 4, 0] },
+    { label: '每三天 (1,4,日)', days: [1, 4, 0] },
 ];
 
 const AddProductModal: React.FC<Props> = ({ isOpen, onClose, onAdd, onUpdate, initialProduct }) => {
   const [name, setName] = useState('');
   const [timing, setTiming] = useState<ProductTiming | null>(null);
-  const [selectedDays, setSelectedDays] = useState<number[]>([]); // 0-6
+  const [selectedDays, setSelectedDays] = useState<number[]>([]);
   const [productType, setProductType] = useState<string>('');
   
-  // AI 分析結果
   const [aiAnalysis, setAiAnalysis] = useState<{reason: string, warning?: string} | null>(null);
   const [isAnalyzingImage, setIsAnalyzingImage] = useState(false);
   const [isAnalyzingText, setIsAnalyzingText] = useState(false);
   
   const galleryInputRef = useRef<HTMLInputElement>(null);
 
-  // 初始化資料
   useEffect(() => {
     if (isOpen && initialProduct) {
         setName(initialProduct.name || '');
@@ -63,10 +61,9 @@ const AddProductModal: React.FC<Props> = ({ isOpen, onClose, onAdd, onUpdate, in
         setProductType(initialProduct.productType || 'OTHER');
         setAiAnalysis(null);
     } else if (isOpen) {
-        // 新增模式預設值
         setName('');
         setTiming(null);
-        setSelectedDays([0, 1, 2, 3, 4, 5, 6]); // 預設每天
+        setSelectedDays([0, 1, 2, 3, 4, 5, 6]); // 預設全選
         setProductType('');
         setAiAnalysis(null);
     }
@@ -75,40 +72,28 @@ const AddProductModal: React.FC<Props> = ({ isOpen, onClose, onAdd, onUpdate, in
   const isEditing = !!initialProduct;
   const isNameEmpty = name.trim().length === 0;
 
-  // 🛠️ 圖片轉 Base64
+  // 圖片轉 Base64
   const fileToBase64 = (file: File): Promise<string> => {
     return new Promise((resolve, reject) => {
       const reader = new FileReader();
       reader.readAsDataURL(file);
-      reader.onload = () => {
-        const result = reader.result as string;
-        const base64Data = result.split(',')[1];
-        resolve(base64Data);
-      };
+      reader.onload = () => resolve((reader.result as string).split(',')[1]);
       reader.onerror = error => reject(error);
     });
   };
 
-  // 🤖 AI 核心
+  // 🤖 呼叫 AI Worker (通用函數)
   const callAIWorker = async (promptText: string, base64Image?: string) => {
     try {
-      const payload: any = {
-        contents: [{
-          parts: [{ text: promptText }]
-        }]
-      };
-
+      const payload: any = { contents: [{ parts: [{ text: promptText }] }] };
       if (base64Image) {
         payload.contents[0].parts.push({
-          inline_data: {
-            mime_type: "image/jpeg",
-            data: base64Image
-          }
+          inline_data: { mime_type: "image/jpeg", data: base64Image }
         });
       }
 
       const controller = new AbortController();
-      const timeoutId = setTimeout(() => controller.abort(), 20000); // 放寬到20秒
+      const timeoutId = setTimeout(() => controller.abort(), 20000);
 
       const response = await fetch(WORKER_URL, {
         method: "POST",
@@ -118,27 +103,19 @@ const AddProductModal: React.FC<Props> = ({ isOpen, onClose, onAdd, onUpdate, in
       });
       clearTimeout(timeoutId);
 
-      if (!response.ok) {
-          const errorData = await response.json().catch(() => ({}));
-          throw new Error(errorData.error?.message || `連線失敗 (${response.status})`);
-      }
-
+      if (!response.ok) throw new Error("連線失敗");
       const data = await response.json();
       const aiText = data.candidates?.[0]?.content?.parts?.[0]?.text;
-      
-      if (!aiText) throw new Error("AI 回傳空內容");
+      if (!aiText) throw new Error("AI 無回傳");
 
-      const jsonStr = aiText.replace(/```json|```/g, "").trim();
-      return JSON.parse(jsonStr);
-
+      return JSON.parse(aiText.replace(/```json|```/g, "").trim());
     } catch (error: any) {
-      console.error("AI Analysis Error:", error);
-      if (error.name === 'AbortError') throw new Error("連線逾時，請稍後再試。");
+      console.error("AI Error:", error);
       throw error;
     }
   };
 
-  // 📸 圖片處理
+  // 📸 1. 圖片辨識 (包含自動分類)
   const handleImageUpload = async (e: React.ChangeEvent<HTMLInputElement>) => {
     const file = e.target.files?.[0];
     if (!file) return;
@@ -147,57 +124,59 @@ const AddProductModal: React.FC<Props> = ({ isOpen, onClose, onAdd, onUpdate, in
     setAiAnalysis(null);
     try {
       const base64Data = await fileToBase64(file);
+      
+      // ✨ AI 指令：請它回傳準確的分類 ID
       const prompt = `
-        你是一位專業保養品辨識專家。請分析這張圖片。
-        回傳 JSON：
+        分析這張保養品圖片。
+        回傳 JSON 格式：
         {
-          "identifiedName": "品牌與產品名稱",
-          "productType": "從以下選: CLEANSER, TONER, ESSENCE, SERUM, EYE_CREAM, LOTION, CREAM, OIL, SUNSCREEN, MASK, ACID, RETINOL, SCRUB",
+          "identifiedName": "品牌+產品名稱(繁體中文)",
+          "productType": "必須從以下 ID 擇一: CLEANSER, TONER, ESSENCE, SERUM, EYE_CREAM, LOTION, CREAM, OIL, SUNSCREEN, MASK, ACID, RETINOL, SCRUB",
           "timing": "MORNING, EVENING, 或 BOTH",
-          "reason": "簡短判斷依據",
-          "warning": "若有酸類/A醇請提醒"
+          "reason": "簡單說明判斷理由",
+          "warning": "若含酸類/A醇請警告，無則 null"
         }
       `;
+
       const result = await callAIWorker(prompt, base64Data);
 
+      // ✨ 自動填入欄位
       if (result.identifiedName) setName(result.identifiedName);
-      if (result.productType) setProductType(result.productType);
-      if (result.timing) setTiming(result.timing);
+      if (result.productType) setProductType(result.productType); // 自動選分類
+      if (result.timing) setTiming(result.timing); // 自動選時段
       
-      setAiAnalysis({
-        reason: result.reason || "AI 辨識成功",
-        warning: result.warning
-      });
+      setAiAnalysis({ reason: result.reason, warning: result.warning });
 
     } catch (error: any) {
-      alert(`圖片辨識失敗：${error.message}`);
+      alert("圖片辨識失敗，請稍後再試");
     } finally {
       setIsAnalyzingImage(false);
-      if (galleryInputRef.current) galleryInputRef.current.value = '';
     }
   };
 
-  // ✍️ 文字自動分析
+  // ✍️ 2. 文字輸入辨識 (包含自動分類)
   const handleNameBlur = async () => {
     if (isNameEmpty || isAnalyzingImage || isAnalyzingText) return;
     setIsAnalyzingText(true);
     setAiAnalysis(null);
     try {
         const prompt = `
-            保養品名稱: "${name}"
-            請分析類型與建議。
-            回傳 JSON：
+            使用者輸入: "${name}"。
+            請分析並回傳 JSON：
             {
-              "productType": "從以下選: CLEANSER, TONER, ESSENCE, SERUM, EYE_CREAM, LOTION, CREAM, OIL, SUNSCREEN, MASK, ACID, RETINOL, SCRUB",
+              "productType": "必須從以下 ID 擇一: CLEANSER, TONER, ESSENCE, SERUM, EYE_CREAM, LOTION, CREAM, OIL, SUNSCREEN, MASK, ACID, RETINOL, SCRUB",
               "timing": "MORNING, EVENING, 或 BOTH",
-              "reason": "簡短判斷理由",
-              "warning": "若有刺激性成分請提醒"
+              "reason": "簡單說明",
+              "warning": "若含刺激成分請警告，無則 null"
             }
         `;
         const result = await callAIWorker(prompt);
+        
+        // ✨ 自動填入
         if (result.productType) setProductType(result.productType);
         if (result.timing) setTiming(result.timing);
         setAiAnalysis({ reason: result.reason, warning: result.warning });
+
     } catch (error) {
         console.log("文字分析略過");
     } finally {
@@ -205,30 +184,18 @@ const AddProductModal: React.FC<Props> = ({ isOpen, onClose, onAdd, onUpdate, in
     }
   };
 
-  // 切換單一日期
-  const toggleDay = (dayIndex: number) => {
-      setSelectedDays(prev =>
-        prev.includes(dayIndex)
-            ? prev.filter(d => d !== dayIndex)
-            : [...prev, dayIndex].sort()
-      );
-  };
-
-  // 🚀 套用頻率範本 (檢查兩陣列是否相等來決定按鈕是否亮起)
-  const applyFrequency = (presetDays: number[]) => {
-      setSelectedDays(presetDays);
-  };
-
-  const isPresetActive = (presetDays: number[]) => {
-      if (presetDays.length !== selectedDays.length) return false;
-      const sortedPreset = [...presetDays].sort();
-      const sortedSelected = [...selectedDays].sort();
-      return sortedPreset.every((value, index) => value === sortedSelected[index]);
+  // 日期選擇與範本
+  const toggleDay = (d: number) => setSelectedDays(prev => prev.includes(d) ? prev.filter(x => x !== d) : [...prev, d].sort());
+  const applyFrequency = (days: number[]) => setSelectedDays(days);
+  const isPresetActive = (days: number[]) => {
+      if (days.length !== selectedDays.length) return false;
+      const s1 = [...days].sort();
+      const s2 = [...selectedDays].sort();
+      return s1.every((v, i) => v === s2[i]);
   };
 
   const handleConfirm = () => {
       if (isNameEmpty || !timing || selectedDays.length === 0) return;
-
       const productData: Product = {
           id: initialProduct?.id || crypto.randomUUID(),
           name,
@@ -237,7 +204,6 @@ const AddProductModal: React.FC<Props> = ({ isOpen, onClose, onAdd, onUpdate, in
           days: selectedDays,
           order: initialProduct?.order || 0
       };
-
       isEditing && onUpdate ? onUpdate(productData) : onAdd(productData);
       onClose();
   };
@@ -262,9 +228,9 @@ const AddProductModal: React.FC<Props> = ({ isOpen, onClose, onAdd, onUpdate, in
 
         <div className="p-6 space-y-6 max-h-[80vh] overflow-y-auto custom-scrollbar">
             
-          {/* 1. Name Input */}
+          {/* 名稱輸入 & 拍照 */}
           <div>
-            <label className="block text-sm font-bold text-gray-700 mb-2 ml-1">產品名稱</label>
+            <label className="block text-sm font-bold text-gray-700 mb-2 ml-1">產品名稱 (輸入後自動分析)</label>
             <div className="relative group">
                 <input
                     type="text"
@@ -283,15 +249,15 @@ const AddProductModal: React.FC<Props> = ({ isOpen, onClose, onAdd, onUpdate, in
                 </button>
                 <input type="file" ref={galleryInputRef} className="hidden" accept="image/*" onChange={handleImageUpload} />
             </div>
-            {isAnalyzingText && <p className="text-xs text-rose-400 mt-2 ml-1 animate-pulse">AI 正在分析...</p>}
+            {isAnalyzingText && <p className="text-xs text-rose-400 mt-2 ml-1 animate-pulse">✨ AI 正在判讀產品類型...</p>}
           </div>
 
-          {/* AI Banner */}
+          {/* AI 提示框 */}
           {aiAnalysis && (
              <div className="bg-gradient-to-r from-blue-50 to-indigo-50 p-4 rounded-2xl border border-blue-100 flex items-start gap-3 animate-[fadeIn_0.5s]">
                  <Sparkles size={18} className="text-blue-400 shrink-0 mt-0.5" />
                  <div className="text-sm">
-                     <p className="text-blue-900 font-medium mb-1">AI 辨識結果</p>
+                     <p className="text-blue-900 font-medium mb-1">AI 辨識成功</p>
                      <p className="text-blue-600/80 leading-relaxed text-xs">{aiAnalysis.reason}</p>
                      {aiAnalysis.warning && (
                          <div className="flex items-center gap-1.5 mt-2 text-rose-500 font-bold text-xs bg-white/60 p-1.5 rounded-lg inline-flex">
@@ -302,7 +268,7 @@ const AddProductModal: React.FC<Props> = ({ isOpen, onClose, onAdd, onUpdate, in
              </div>
           )}
 
-          {/* 2. Timing */}
+          {/* 時段選擇 */}
           <div>
              <label className="block text-sm font-bold text-gray-700 mb-3 ml-1 flex items-center gap-2">
                  <Clock size={16} className="text-rose-400"/> 使用時段
@@ -329,10 +295,10 @@ const AddProductModal: React.FC<Props> = ({ isOpen, onClose, onAdd, onUpdate, in
              </div>
           </div>
 
-          {/* 3. Product Type */}
+          {/* 產品類型 (AI 自動選，也可手動選) */}
           <div>
             <label className="block text-sm font-bold text-gray-700 mb-3 ml-1 flex items-center gap-2">
-                <Tag size={16} className="text-rose-400"/> 產品類型
+                <Tag size={16} className="text-rose-400"/> 產品類型 (AI 自動選擇)
             </label>
             <div className="flex flex-wrap gap-2">
                 {PRODUCT_TYPE_OPTIONS.map(tag => (
@@ -341,7 +307,7 @@ const AddProductModal: React.FC<Props> = ({ isOpen, onClose, onAdd, onUpdate, in
                         onClick={() => setProductType(tag.id)}
                         className={`px-3 py-1.5 rounded-lg text-xs font-bold transition-all border
                             ${productType === tag.id
-                                ? 'bg-gray-800 text-white border-gray-800 shadow-md'
+                                ? 'bg-gray-800 text-white border-gray-800 shadow-md scale-105'
                                 : 'bg-white text-gray-500 border-gray-200 hover:border-gray-300'}
                         `}
                     >
@@ -351,7 +317,7 @@ const AddProductModal: React.FC<Props> = ({ isOpen, onClose, onAdd, onUpdate, in
             </div>
           </div>
 
-          {/* 4. Days Selection (Updated) */}
+          {/* 頻率選擇 (星期天開頭) */}
           <div>
              <div className="flex justify-between items-end mb-3">
                  <label className="text-sm font-bold text-gray-700 ml-1 flex items-center gap-2">
@@ -359,7 +325,7 @@ const AddProductModal: React.FC<Props> = ({ isOpen, onClose, onAdd, onUpdate, in
                  </label>
              </div>
 
-             {/* 🌟 快速選擇按鈕區 */}
+             {/* 快速按鈕 */}
              <div className="flex flex-wrap gap-2 mb-4">
                 {FREQUENCY_PRESETS.map((preset) => {
                     const isActive = isPresetActive(preset.days);
@@ -381,9 +347,9 @@ const AddProductModal: React.FC<Props> = ({ isOpen, onClose, onAdd, onUpdate, in
                 })}
              </div>
 
-             {/* 星期圓圈圈 (會即時連動) */}
+             {/* 星期圓圈圈 (修改這裡：0=星期日 排第一個) */}
              <div className="flex justify-between px-1">
-                 {[1, 2, 3, 4, 5, 6, 0].map(d => {
+                 {[0, 1, 2, 3, 4, 5, 6].map(d => { // 🌟 順序改成 日 -> 六
                      const isSelected = selectedDays.includes(d);
                      const isWeekend = d === 0 || d === 6;
                      return (
