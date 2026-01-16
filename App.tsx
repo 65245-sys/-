@@ -96,6 +96,7 @@ const App: React.FC = () => {
   const [noteInput, setNoteInput] = useState('');
   const [skinConditionInput, setSkinConditionInput] = useState<string[]>([]);
   const [isGeneratingAI, setIsGeneratingAI] = useState(false);
+  const [aiFeedback, setAiFeedback] = useState<{ title: string; content: string } | null>(null);
   const [isSorting, setIsSorting] = useState(false);
 
   // Derived Data
