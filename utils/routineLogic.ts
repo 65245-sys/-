@@ -1,5 +1,5 @@
 import { DayRoutine, Product, ProductSuggestionResult, MachineMode } from '../types';
-import { GoogleGenAI } from "@google/genai";
+import { GoogleGenAI, Type } from "@google/genai";
 
 // Helper to generate initial products with new structure
 export const INITIAL_PRODUCTS: Product[] = [
@@ -28,6 +28,63 @@ export const ALL_MACHINE_MODES: MachineMode[] = [
     { id: 'airshot', name: 'Air Shot', color: 'bg-blue-500', description: '藍光 - 毛孔護理 (限乾臉)' },
     { id: 'derma', name: 'Derma Shot', color: 'bg-purple-500', description: '紫光 - 綜合按摩' }, 
 ];
+
+// Pre-defined Themes for Dropdown
+export const THEME_PRESETS = [
+    {
+        label: '🌿 毛孔清潔 (Pore Care)',
+        theme: '毛孔清潔日 (Pore Care)',
+        description: '深度清潔毛孔，加強吸收。請務必在乾臉狀態使用 Air Shot。',
+        defaultModes: ['airshot', 'booster'],
+        keywords: ['毛孔', 'Pore', '清潔']
+    },
+    {
+        label: '🪻 彈力拉提 (Lifting)',
+        theme: '彈力拉提日 (Lifting)',
+        description: 'EMS 刺激肌肉層，提升輪廓線。搭配凝膠使用效果更佳。',
+        defaultModes: ['ems', 'booster'],
+        keywords: ['拉提', 'Lifting', '彈力']
+    },
+    {
+        label: '🌹 豐盈光澤 (Plumping)',
+        theme: '豐盈光澤日 (Plumping)',
+        description: 'MC 模式促進膠原蛋白，恢復肌膚彈性與澎潤感。',
+        defaultModes: ['mc', 'booster'],
+        keywords: ['光澤', 'Plumping', '豐盈']
+    },
+    {
+        label: '🍂 週末煥膚 (Acid/Renewal)',
+        theme: '週末煥膚日 (Acid Care)',
+        description: '肌膚休息日，專注於角質代謝。勿使用美容儀。',
+        defaultModes: [],
+        keywords: ['煥膚', '酸類', 'Acid']
+    },
+    {
+        label: '💧 深度保濕 (Moisturizing)',
+        theme: '深度保濕日 (Moisturizing)',
+        description: '一週的結尾，給予肌膚深層滋潤修復。勿使用美容儀。',
+        defaultModes: [],
+        keywords: ['保濕', '水', 'Moisturizing']
+    },
+    {
+        label: '✨ 自訂主題 (Custom)',
+        theme: '自訂保養主題',
+        description: '請輸入您的自訂說明...',
+        defaultModes: [],
+        keywords: []
+    }
+];
+
+// Helper to determine theme type from string (for colors/images)
+export const getThemeType = (themeName: string): 'PORE' | 'LIFTING' | 'PLUMPING' | 'ACID' | 'MOISTURE' | 'DEFAULT' => {
+    const name = themeName || '';
+    if (name.includes('毛孔') || name.includes('Pore')) return 'PORE';
+    if (name.includes('拉提') || name.includes('Lifting')) return 'LIFTING';
+    if (name.includes('光澤') || name.includes('Plumping') || name.includes('豐盈')) return 'PLUMPING';
+    if (name.includes('煥膚') || name.includes('酸') || name.includes('Acid')) return 'ACID';
+    if (name.includes('保濕') || name.includes('Moisturizing')) return 'MOISTURE';
+    return 'DEFAULT';
+};
 
 // Weights for auto-sorting (Smaller number = Earlier step)
 export const PRODUCT_ORDER_WEIGHTS: Record<string, number> = {
@@ -80,7 +137,8 @@ const detectProductType = (name: string): string => {
     return '一般保養';
 };
 
-export const analyzeProductInput = (name: string): ProductSuggestionResult => {
+// Original Regex-based analysis (fallback)
+export const analyzeProductInputRegex = (name: string): ProductSuggestionResult => {
   const n = name.toLowerCase();
   const type = detectProductType(n);
   
@@ -147,6 +205,77 @@ export const analyzeProductInput = (name: string): ProductSuggestionResult => {
     reason: '一般保養品'
   };
 };
+
+// Alias for backward compatibility if needed, though we will prioritize the AI one
+export const analyzeProductInput = analyzeProductInputRegex;
+
+// New AI Analysis with Google Search Grounding
+export const analyzeProductWithAI = async (name: string): Promise<ProductSuggestionResult> => {
+    const ai = new GoogleGenAI({ apiKey: process.env.API_KEY });
+    
+    const modelId = 'gemini-3-flash-preview'; 
+
+    const prompt = `
+      Search for the skincare product "${name}". 
+      Identify its key ingredients, main efficacy (功效), and usage instructions.
+      
+      Return a JSON object with:
+      1. "productType": Best fit from ['潔顏', '酸類', '化妝水', '面膜', '前導精華', '精華液', 'A醇', '眼霜', '乳液', '乳霜', '保養油', '防曬', '其他'].
+      2. "timing": 'MORNING', 'EVENING', or 'BOTH'.
+      3. "days": Array of integers 0-6 (0=Sun, 6=Sat).
+      4. "reason": A short 1-sentence description of the product's main benefit/efficacy. **MUST BE IN TRADITIONAL CHINESE (繁體中文)**.
+      5. "warning": Optional short warning. **MUST BE IN TRADITIONAL CHINESE (繁體中文)** (e.g. "建議避開陽光").
+
+      Strict Application Rules for "days" and "timing":
+      - Acids/Peels (BHA/AHA/Salicylic) -> Saturday (6) Evening only.
+      - Retinol (A醇) -> Evening, Daily EXCEPT Saturday (0,1,2,3,4,5).
+      - Vitamin C / Whitening -> Morning, Daily (0-6).
+      - Sunscreen -> Morning, Daily (0-6).
+      - Heavy Creams/Oils -> Evening, Daily (0-6).
+      - General Hydration -> Both or Evening, Daily (0-6).
+    `;
+
+    try {
+        const response = await ai.models.generateContent({
+            model: modelId,
+            contents: prompt,
+            config: {
+                tools: [{ googleSearch: {} }],
+                responseMimeType: 'application/json',
+                responseSchema: {
+                    type: Type.OBJECT,
+                    properties: {
+                        productType: { type: Type.STRING },
+                        timing: { type: Type.STRING },
+                        days: { type: Type.ARRAY, items: { type: Type.INTEGER } },
+                        reason: { type: Type.STRING },
+                        warning: { type: Type.STRING },
+                    }
+                }
+            }
+        });
+
+        const text = response.text;
+        if (!text) throw new Error("No response from AI");
+        
+        const data = JSON.parse(text);
+
+        // Map AI result to our strict types
+        return {
+            productType: data.productType || '其他',
+            timing: (['MORNING', 'EVENING', 'BOTH'].includes(data.timing) ? data.timing : 'EVENING') as any,
+            days: Array.isArray(data.days) ? data.days : [0,1,2,3,4,5,6],
+            reason: data.reason || 'AI 自動分析',
+            warning: data.warning
+        };
+
+    } catch (e) {
+        console.error("AI Text Analysis Error", e);
+        // Fallback to Regex if AI fails
+        return analyzeProductInputRegex(name);
+    }
+};
+
 
 const AirShot = ALL_MACHINE_MODES.find(m => m.id === 'airshot')!;
 const Booster = ALL_MACHINE_MODES.find(m => m.id === 'booster')!;
@@ -222,7 +351,7 @@ export const analyzeProductImage = async (base64Image: string): Promise<ProductS
       - productType: One of ['精華液', '乳霜', '化妝水', '潔顏', '防曬', '面膜', '酸類', 'A醇', '眼霜', '保養油', '其他'].
       - timing: One of ['MORNING', 'EVENING', 'BOTH'].
       - days: An array of numbers (0-6) representing Sunday(0) to Saturday(6).
-      - reason: A short string explaining why.
+      - reason: A short string explaining the product's main function/efficacy. **MUST BE IN TRADITIONAL CHINESE (繁體中文)**.
 
       Apply these rules for 'days' and 'timing':
       1. Acids/Peels (BHA/AHA) -> Saturday (6) Evening only.

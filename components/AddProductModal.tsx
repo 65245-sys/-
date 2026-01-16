@@ -1,6 +1,6 @@
 import React, { useState, useEffect, useRef } from 'react';
-import { X, Sparkles, AlertCircle, Check, CalendarDays, Clock, Tag, Camera, Loader2, ImagePlus } from 'lucide-react';
-import { analyzeProductInput, getDayLabel, analyzeProductImage, PRODUCT_TAGS } from '../utils/routineLogic';
+import { X, Sparkles, AlertCircle, CalendarDays, Clock, Tag, Loader2, ImagePlus } from 'lucide-react';
+import { analyzeProductWithAI, getDayLabel, analyzeProductImage, PRODUCT_TAGS } from '../utils/routineLogic';
 import { Product, ProductTiming } from '../types';
 
 interface Props {
@@ -18,15 +18,16 @@ const AddProductModal: React.FC<Props> = ({ isOpen, onClose, onAdd, onUpdate, in
   const [productType, setProductType] = useState<string>('');
   const [aiAnalysis, setAiAnalysis] = useState<{reason: string, warning?: string} | null>(null);
   const [isAnalyzingImage, setIsAnalyzingImage] = useState(false);
+  const [isAnalyzingText, setIsAnalyzingText] = useState(false);
   
-  const fileInputRef = useRef<HTMLInputElement>(null);
+  const galleryInputRef = useRef<HTMLInputElement>(null);
 
   // Populate data if editing
   useEffect(() => {
     if (isOpen && initialProduct) {
-        setName(initialProduct.name);
+        setName(initialProduct.name || '');
         setTiming(initialProduct.timing);
-        setSelectedDays(initialProduct.days);
+        setSelectedDays(initialProduct.days || []);
         setProductType(initialProduct.productType || '一般保養');
     } else if (isOpen && !initialProduct) {
         // Reset for new entry
@@ -36,6 +37,7 @@ const AddProductModal: React.FC<Props> = ({ isOpen, onClose, onAdd, onUpdate, in
         setProductType('');
         setAiAnalysis(null);
         setIsAnalyzingImage(false);
+        setIsAnalyzingText(false);
     }
   }, [isOpen, initialProduct]);
 
@@ -43,17 +45,28 @@ const AddProductModal: React.FC<Props> = ({ isOpen, onClose, onAdd, onUpdate, in
 
   const isEditing = !!initialProduct;
 
-  const handleTextAnalyze = () => {
-    if (!name.trim()) return;
-    const result = analyzeProductInput(name);
-    // Only overwrite if user hasn't manually selected yet, or if it's a fresh analysis click
-    setTiming(result.timing);
-    setSelectedDays(result.days);
-    setProductType(result.productType);
-    setAiAnalysis({
-        reason: result.reason || '智慧分析',
-        warning: result.warning
-    });
+  const handleTextAnalyze = async () => {
+    const trimmedName = name ? name.trim() : '';
+    if (!trimmedName) return;
+    
+    setIsAnalyzingText(true);
+    setAiAnalysis(null);
+
+    try {
+        const result = await analyzeProductWithAI(trimmedName);
+        setTiming(result.timing);
+        setSelectedDays(result.days);
+        setProductType(result.productType);
+        setAiAnalysis({
+            reason: result.reason || '智慧分析完成',
+            warning: result.warning
+        });
+    } catch (error) {
+        console.error(error);
+        alert("分析失敗，請稍後再試");
+    } finally {
+        setIsAnalyzingText(false);
+    }
   };
 
   const handleImageUpload = async (e: React.ChangeEvent<HTMLInputElement>) => {
@@ -67,7 +80,7 @@ const AddProductModal: React.FC<Props> = ({ isOpen, onClose, onAdd, onUpdate, in
               const base64String = (reader.result as string).split(',')[1];
               const result = await analyzeProductImage(base64String);
               
-              setName(result.name);
+              setName(result.name || '未知產品');
               setTiming(result.timing);
               setSelectedDays(result.days);
               setProductType(result.productType);
@@ -83,6 +96,8 @@ const AddProductModal: React.FC<Props> = ({ isOpen, onClose, onAdd, onUpdate, in
           setIsAnalyzingImage(false);
           alert("圖片分析失敗，請稍後再試");
       }
+      // Reset input value to allow re-uploading the same file if needed
+      e.target.value = '';
   };
 
   const toggleDay = (dayIndex: number) => {
@@ -100,11 +115,12 @@ const AddProductModal: React.FC<Props> = ({ isOpen, onClose, onAdd, onUpdate, in
   };
 
   const handleConfirm = () => {
-    if (!name.trim() || !timing || selectedDays.length === 0) return;
+    const trimmedName = name ? name.trim() : '';
+    if (!trimmedName || !timing || selectedDays.length === 0) return;
     
     const productData: Product = {
       id: initialProduct ? initialProduct.id : Date.now().toString(),
-      name: name,
+      name: trimmedName,
       timing: timing,
       days: selectedDays,
       productType: productType || '一般保養',
@@ -125,9 +141,11 @@ const AddProductModal: React.FC<Props> = ({ isOpen, onClose, onAdd, onUpdate, in
 
   // 0 = Sun, 1 = Mon ... 6 = Sat
   const daysMap = [0, 1, 2, 3, 4, 5, 6]; 
+  const isBusy = isAnalyzingImage || isAnalyzingText;
+  const isNameEmpty = !name || !name.trim();
 
   return (
-    <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/30 backdrop-blur-sm animate-[fadeIn_0.2s_ease-out]">
+    <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/20 backdrop-blur-sm animate-[fadeIn_0.2s_ease-out]">
       {/* Responsive Width: max-w-lg on desktop */}
       <div className="bg-white rounded-3xl shadow-2xl w-full max-w-md md:max-w-lg overflow-hidden animate-[scaleUp_0.2s_ease-out] max-h-[90vh] overflow-y-auto">
         
@@ -148,52 +166,55 @@ const AddProductModal: React.FC<Props> = ({ isOpen, onClose, onAdd, onUpdate, in
           <div>
             <label className="block text-sm font-bold text-gray-700 mb-2">產品名稱 / 拍照辨識</label>
             <div className="flex gap-2">
-               {/* Hidden File Input */}
+               {/* Hidden File Input - Gallery */}
                <input 
                   type="file" 
                   accept="image/*" 
-                  capture="environment" 
-                  ref={fileInputRef} 
+                  ref={galleryInputRef} 
                   className="hidden" 
                   onChange={handleImageUpload}
                />
                
-               {/* Camera Button */}
+               {/* Gallery/Photo Button */}
                <button 
-                 onClick={() => fileInputRef.current?.click()}
-                 className="bg-gray-100 text-gray-600 p-3 rounded-xl hover:bg-rose-100 hover:text-rose-600 transition-colors shrink-0 flex items-center justify-center border border-gray-200"
-                 title="拍照辨識"
-                 disabled={isAnalyzingImage}
+                 onClick={() => galleryInputRef.current?.click()}
+                 className="bg-gray-50 text-gray-500 p-3 rounded-2xl hover:bg-rose-100 hover:text-rose-600 transition-colors shrink-0 flex items-center justify-center border border-transparent"
+                 title="上傳照片辨識"
+                 disabled={isBusy}
                >
-                 {isAnalyzingImage ? <Loader2 size={20} className="animate-spin" /> : <Camera size={20} />}
+                 {isAnalyzingImage ? <Loader2 size={20} className="animate-spin" /> : <ImagePlus size={20} />}
                </button>
 
               <input 
                 type="text"
                 value={name}
                 onChange={(e) => setName(e.target.value)}
-                placeholder="輸入名稱或拍照..."
-                className="flex-1 px-4 py-3 rounded-xl border border-gray-200 focus:outline-none focus:ring-2 focus:ring-rose-300 text-gray-800 placeholder-gray-400 min-w-0"
+                placeholder="輸入名稱，例如: 雅詩蘭黛小棕瓶"
+                className="flex-1 px-4 py-3 rounded-2xl border border-transparent bg-gray-50 focus:bg-white focus:outline-none focus:ring-2 focus:ring-rose-200 text-gray-800 placeholder-gray-400 min-w-0 transition-all"
               />
               
               <button 
                 onClick={handleTextAnalyze}
-                disabled={!name.trim() || isAnalyzingImage}
-                className="bg-rose-100 text-rose-600 px-4 rounded-xl font-bold text-sm hover:bg-rose-200 disabled:opacity-50 disabled:cursor-not-allowed transition-colors flex items-center gap-1 shrink-0"
+                disabled={isNameEmpty || isBusy}
+                className="bg-rose-50 text-rose-500 px-4 rounded-2xl font-bold text-sm hover:bg-rose-100 disabled:opacity-50 disabled:cursor-not-allowed transition-colors flex items-center gap-1 shrink-0"
               >
-                <Sparkles size={16} /> 分析
+                {isAnalyzingText ? <Loader2 size={16} className="animate-spin" /> : <Sparkles size={16} />} 
+                {isAnalyzingText ? '搜尋中' : 'AI 分析'}
               </button>
             </div>
             
             {/* AI Analysis Result Box */}
             {aiAnalysis && (
-                <div className="mt-3 bg-rose-50 p-3 rounded-xl border border-rose-100 text-sm animate-[fadeIn_0.3s]">
+                <div className="mt-3 bg-rose-50 p-4 rounded-2xl border border-rose-100 text-sm animate-[fadeIn_0.3s]">
                     <div className="flex items-center text-rose-700 font-bold mb-1">
-                        <Sparkles size={14} className="mr-1.5"/> AI 建議：{aiAnalysis.reason}
+                        <Sparkles size={14} className="mr-1.5"/> 產品功效與分析：
+                    </div>
+                    <div className="text-gray-600 leading-relaxed pl-5 mb-1">
+                        {aiAnalysis.reason}
                     </div>
                     {aiAnalysis.warning && (
-                        <div className="flex items-start text-xs text-amber-600 mt-1">
-                            <AlertCircle size={12} className="mr-1 mt-0.5 shrink-0" />
+                        <div className="flex items-start text-xs text-amber-600 mt-2 pl-1 bg-amber-50 p-2 rounded-lg border border-amber-100">
+                            <AlertCircle size={12} className="mr-1.5 mt-0.5 shrink-0" />
                             {aiAnalysis.warning}
                         </div>
                     )}
@@ -214,8 +235,8 @@ const AddProductModal: React.FC<Props> = ({ isOpen, onClose, onAdd, onUpdate, in
                         className={`
                             px-3 py-1.5 rounded-full text-xs font-medium border transition-all
                             ${productType === tag 
-                                ? 'bg-slate-700 text-white border-slate-700' 
-                                : 'bg-white text-gray-500 border-gray-200 hover:border-gray-300'}
+                                ? 'bg-rose-400 text-white border-rose-400' 
+                                : 'bg-gray-50 text-gray-500 border-transparent hover:bg-gray-100'}
                         `}
                     >
                         {tag}
@@ -223,14 +244,14 @@ const AddProductModal: React.FC<Props> = ({ isOpen, onClose, onAdd, onUpdate, in
                 ))}
                 {/* Fallback Input if type is not in list but present (e.g. from AI) */}
                 {!PRODUCT_TAGS.includes(productType) && productType && (
-                     <button className="px-3 py-1.5 rounded-full text-xs font-medium border bg-slate-700 text-white border-slate-700">
+                     <button className="px-3 py-1.5 rounded-full text-xs font-medium border bg-rose-400 text-white border-rose-400">
                         {productType}
                      </button>
                 )}
              </div>
           </div>
 
-          {/* Timing Selection - REMOVED POST_BOOSTER */}
+          {/* Timing Selection */}
           <div>
              <label className="block text-sm font-bold text-gray-700 mb-3 flex items-center gap-2">
                 <Clock size={16} className="text-gray-400" /> 使用時段
@@ -245,10 +266,10 @@ const AddProductModal: React.FC<Props> = ({ isOpen, onClose, onAdd, onUpdate, in
                         key={t.id}
                         onClick={() => setTiming(t.id as ProductTiming)}
                         className={`
-                            px-3 py-3 rounded-xl border text-sm font-medium transition-all
+                            px-3 py-3 rounded-2xl border text-sm font-medium transition-all
                             ${timing === t.id 
-                                ? 'bg-rose-500 text-white border-rose-500 shadow-md' 
-                                : 'bg-white border-gray-200 text-gray-600 hover:bg-gray-50'}
+                                ? 'bg-rose-400 text-white border-rose-400 shadow-md' 
+                                : 'bg-gray-50 border-transparent text-gray-500 hover:bg-gray-100'}
                         `}
                     >
                         {t.label}
@@ -264,9 +285,9 @@ const AddProductModal: React.FC<Props> = ({ isOpen, onClose, onAdd, onUpdate, in
                     <CalendarDays size={16} className="text-gray-400" /> 設定週期
                  </label>
                  <div className="flex gap-1">
-                     <button onClick={() => selectDaysPreset('ALL')} className="text-xs bg-gray-100 hover:bg-gray-200 px-2 py-1 rounded text-gray-600">每天</button>
-                     <button onClick={() => selectDaysPreset('WEEKDAY')} className="text-xs bg-gray-100 hover:bg-gray-200 px-2 py-1 rounded text-gray-600">平日</button>
-                     <button onClick={() => selectDaysPreset('WEEKEND')} className="text-xs bg-gray-100 hover:bg-gray-200 px-2 py-1 rounded text-gray-600">週末</button>
+                     <button onClick={() => selectDaysPreset('ALL')} className="text-xs bg-gray-100 hover:bg-gray-200 px-2 py-1 rounded-lg text-gray-600">每天</button>
+                     <button onClick={() => selectDaysPreset('WEEKDAY')} className="text-xs bg-gray-100 hover:bg-gray-200 px-2 py-1 rounded-lg text-gray-600">平日</button>
+                     <button onClick={() => selectDaysPreset('WEEKEND')} className="text-xs bg-gray-100 hover:bg-gray-200 px-2 py-1 rounded-lg text-gray-600">週末</button>
                  </div>
              </div>
              
@@ -281,8 +302,8 @@ const AddProductModal: React.FC<Props> = ({ isOpen, onClose, onAdd, onUpdate, in
                             className={`
                                 w-10 h-10 rounded-full flex items-center justify-center text-sm font-bold transition-all
                                 ${isSelected 
-                                    ? 'bg-rose-500 text-white shadow-md scale-105' 
-                                    : 'bg-white border border-gray-200 text-gray-400 hover:border-rose-200'}
+                                    ? 'bg-rose-400 text-white shadow-md scale-105' 
+                                    : 'bg-white border border-gray-100 text-gray-400 hover:border-rose-200'}
                                 ${!isSelected && isWeekend ? 'text-rose-300' : ''}
                             `}
                          >
@@ -296,8 +317,8 @@ const AddProductModal: React.FC<Props> = ({ isOpen, onClose, onAdd, onUpdate, in
           {/* Action Button */}
           <button 
             onClick={handleConfirm}
-            disabled={!name.trim() || !timing || selectedDays.length === 0}
-            className="w-full py-3.5 bg-gray-900 text-white rounded-xl font-bold text-base shadow-lg hover:bg-black transition-transform active:scale-95 disabled:opacity-50 disabled:cursor-not-allowed disabled:active:scale-100"
+            disabled={isNameEmpty || !timing || selectedDays.length === 0}
+            className="w-full py-3.5 bg-rose-500 text-white rounded-2xl font-bold text-base shadow-lg hover:bg-rose-600 transition-transform active:scale-95 disabled:opacity-50 disabled:cursor-not-allowed disabled:active:scale-100"
            >
              {isEditing ? '儲存變更' : '確認加入清單'}
            </button>

@@ -1,7 +1,7 @@
 import React, { useState, useEffect } from 'react';
-import { X, Zap, Calendar, Save, RotateCcw } from 'lucide-react';
+import { X, Zap, Calendar, Save, RotateCcw, ChevronDown } from 'lucide-react';
 import { DayRoutine } from '../types';
-import { ALL_MACHINE_MODES, getDayLabel, DEFAULT_WEEKLY_SCHEDULE } from '../utils/routineLogic';
+import { ALL_MACHINE_MODES, getDayLabel, DEFAULT_WEEKLY_SCHEDULE, THEME_PRESETS } from '../utils/routineLogic';
 
 interface Props {
   isOpen: boolean;
@@ -50,23 +50,39 @@ const WeeklyScheduleModal: React.FC<Props> = ({ isOpen, onClose, schedule, onSav
 
     handleUpdateDay('machineModes', newModes);
     // If modes exist, it's not a rest day automatically (unless user wants it to be)
-    // But usually modes imply work. 
     if (newModes.length > 0) {
         handleUpdateDay('isRestDay', false);
     }
   };
 
   const handleResetDefault = () => {
-    // Directly reset to defaults without blocking confirm to ensure UI responsiveness
     setLocalSchedule(JSON.parse(JSON.stringify(DEFAULT_WEEKLY_SCHEDULE)));
-    // Optional: Visual feedback
     alert("已載入系統預設值！\n請記得點擊右下角「儲存設定」以套用變更。");
   };
 
-  const currentDayData = localSchedule[activeDay];
+  const handleThemeChange = (e: React.ChangeEvent<HTMLSelectElement>) => {
+      const selectedLabel = e.target.value;
+      const preset = THEME_PRESETS.find(p => p.label === selectedLabel);
 
-  // Safeguard in case currentDayData is undefined (e.g. key mismatch during render)
+      if (preset) {
+          handleUpdateDay('theme', preset.theme);
+          handleUpdateDay('description', preset.description);
+          
+          // Optional: Auto-select default modes if it's not 'Custom'
+          if (!selectedLabel.includes('Custom')) {
+            const newModes = ALL_MACHINE_MODES.filter(m => preset.defaultModes.includes(m.id));
+            handleUpdateDay('machineModes', newModes);
+            handleUpdateDay('isRestDay', newModes.length === 0);
+          }
+      }
+  };
+
+  const currentDayData = localSchedule[activeDay];
   if (!currentDayData) return null;
+
+  // Find matching preset for the dropdown value
+  const currentPreset = THEME_PRESETS.find(p => p.theme === currentDayData.theme) || 
+                        THEME_PRESETS.find(p => p.label.includes('Custom'));
 
   return (
     <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-rose-950/20 backdrop-blur-sm animate-[fadeIn_0.2s_ease-out]">
@@ -113,26 +129,33 @@ const WeeklyScheduleModal: React.FC<Props> = ({ isOpen, onClose, schedule, onSav
             {/* Editor Area */}
             <div className="flex-1 overflow-y-auto p-6 bg-white">
                 
-                {/* 1. Theme Input */}
-                <div className="mb-5">
-                    <label className="block text-xs font-bold text-gray-500 uppercase tracking-wider mb-2">今日主題 (Theme)</label>
-                    <input 
-                        type="text" 
-                        value={currentDayData.theme}
-                        onChange={(e) => handleUpdateDay('theme', e.target.value)}
-                        className="w-full p-3 bg-gray-50 border border-gray-100 rounded-xl font-bold text-gray-800 focus:outline-none focus:border-rose-300 focus:ring-2 focus:ring-rose-50"
-                        placeholder="例如：毛孔清潔日"
-                    />
+                {/* 1. Theme Selection (Dropdown) */}
+                <div className="mb-5 relative">
+                    <label className="block text-xs font-bold text-gray-500 uppercase tracking-wider mb-2">選擇今日主題 (Theme)</label>
+                    <div className="relative">
+                        <select 
+                            value={currentPreset?.label || ''}
+                            onChange={handleThemeChange}
+                            className="w-full p-3 pr-10 bg-gray-50 border border-gray-100 rounded-xl font-bold text-gray-800 appearance-none focus:outline-none focus:border-rose-300 focus:ring-2 focus:ring-rose-50"
+                        >
+                            {THEME_PRESETS.map((preset) => (
+                                <option key={preset.label} value={preset.label}>
+                                    {preset.label}
+                                </option>
+                            ))}
+                        </select>
+                        <ChevronDown size={18} className="absolute right-3 top-1/2 -translate-y-1/2 text-gray-400 pointer-events-none" />
+                    </div>
                 </div>
 
-                {/* 2. Description Input */}
+                {/* 2. Description Input (Auto-filled but editable) */}
                 <div className="mb-6">
-                    <label className="block text-xs font-bold text-gray-500 uppercase tracking-wider mb-2">描述與備註</label>
+                    <label className="block text-xs font-bold text-gray-500 uppercase tracking-wider mb-2">描述與備註 (Description)</label>
                     <textarea 
                         value={currentDayData.description}
                         onChange={(e) => handleUpdateDay('description', e.target.value)}
                         className="w-full p-3 bg-gray-50 border border-gray-100 rounded-xl text-sm text-gray-600 h-24 resize-none focus:outline-none focus:border-rose-300 focus:ring-2 focus:ring-rose-50 leading-relaxed"
-                        placeholder="例如：務必在乾臉狀態使用..."
+                        placeholder="選擇主題後會自動填入，也可自行修改..."
                     />
                 </div>
 

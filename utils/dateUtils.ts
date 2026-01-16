@@ -1,3 +1,4 @@
+
 export const formatDateKey = (date: Date): string => {
   const y = date.getFullYear();
   const m = String(date.getMonth() + 1).padStart(2, '0');
@@ -13,26 +14,28 @@ export const getDisplayDate = (date: Date): string => {
   }).format(date);
 };
 
-export const getWeekDays = (currentDate: Date): Date[] => {
-  // Generate a sliding window: 3 days before current date, up to 10 days after (Total 14 days)
+export const getTimelineDates = (centerDate: Date): Date[] => {
+  // Generate a wider window: 30 days before and 30 days after the center date
   const dates: Date[] = [];
-  const curr = new Date(currentDate); 
+  const curr = new Date(centerDate); 
   curr.setHours(0, 0, 0, 0);
   
-  // Start 3 days back
-  const startOffset = -3;
-  const totalDays = 14;
+  const daysBefore = 30;
+  const daysAfter = 30;
 
   const startDate = new Date(curr);
-  startDate.setDate(curr.getDate() + startOffset);
+  startDate.setDate(curr.getDate() - daysBefore);
 
-  for (let i = 0; i < totalDays; i++) {
+  for (let i = 0; i <= (daysBefore + daysAfter); i++) {
     const d = new Date(startDate);
     d.setDate(startDate.getDate() + i);
     dates.push(d);
   }
   return dates;
 };
+
+// Legacy alias if needed, or just remove if I update all calls
+export const getWeekDays = getTimelineDates;
 
 export const isSameDay = (d1: Date, d2: Date): boolean => {
   return d1.getFullYear() === d2.getFullYear() &&

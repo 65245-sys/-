@@ -1,9 +1,9 @@
 import React, { useState, useEffect, useRef } from 'react';
-import { Calendar, Plus, CheckCircle, Undo2, ChevronLeft, ChevronRight, Moon, Sun, Edit3, Save, Sparkles, Archive, Loader2, Quote, ArrowRight, Settings2, CalendarDays } from 'lucide-react';
+import { Calendar, Plus, CheckCircle, Undo2, ChevronLeft, ChevronRight, Moon, Sun, Edit3, Save, Sparkles, Archive, Loader2, Quote, ArrowRight, Settings2, CalendarDays, BookOpen, Feather } from 'lucide-react';
 import { GoogleGenAI } from "@google/genai";
 import { DailyLog, DailyLogsMap, Product, RoutineType, MachineMode, DayRoutine } from './types';
 import { getDisplayDate, formatDateKey, isSameDay } from './utils/dateUtils';
-import { getRoutineForDay, INITIAL_PRODUCTS, analyzeProductInput, getOptimalProductOrder, PRODUCT_ORDER_WEIGHTS, PRODUCT_TAGS, DEFAULT_WEEKLY_SCHEDULE } from './utils/routineLogic';
+import { getRoutineForDay, INITIAL_PRODUCTS, analyzeProductInput, getOptimalProductOrder, PRODUCT_ORDER_WEIGHTS, PRODUCT_TAGS, DEFAULT_WEEKLY_SCHEDULE, getThemeType } from './utils/routineLogic';
 
 // Components
 import Timeline from './components/Timeline';
@@ -15,6 +15,62 @@ import ProductManager from './components/ProductManager';
 import SkinConditionSelector from './components/SkinConditionSelector';
 import MachineSelectorModal from './components/MachineSelectorModal';
 import WeeklyScheduleModal from './components/WeeklyScheduleModal';
+
+// Helper: Dynamic Theme Background Colors (Based on Theme String, not Day Index)
+const getThemeBackgroundClass = (themeName: string) => {
+    const type = getThemeType(themeName);
+    
+    switch(type) {
+        case 'PORE':
+            return 'bg-gradient-to-br from-emerald-50 via-teal-50 to-emerald-100/60';
+        case 'LIFTING':
+            return 'bg-gradient-to-br from-violet-50 via-fuchsia-50 to-purple-100/60';
+        case 'PLUMPING':
+            return 'bg-gradient-to-br from-rose-50 via-pink-50 to-rose-100/60';
+        case 'ACID':
+            return 'bg-gradient-to-br from-amber-50 via-orange-50 to-yellow-100/60';
+        case 'MOISTURE':
+            return 'bg-gradient-to-br from-sky-50 via-blue-50 to-indigo-100/60';
+        default:
+            return 'bg-gradient-to-br from-gray-50 to-slate-100';
+    }
+};
+
+// Internal Component: Theme Image Pattern (Replaces Lines) - Based on Theme String
+const ThemeFlowerPattern = ({ themeName }: { themeName: string }) => {
+    const type = getThemeType(themeName);
+
+    // [圖片欄位設定] - 使用者指定的圖片
+    const themeImages = {
+        PORE: "https://i.ibb.co/GQVS5HpK/Gemini-Generated-Image-33a1lz33a1lz33a1.png", 
+        LIFTING: "https://i.ibb.co/ccL0sjyw/Gemini-Generated-Image-llis6tllis6tllis.png",
+        PLUMPING: "https://i.ibb.co/99NrBg9H/Gemini-Generated-Image-b0gs8ub0gs8ub0gs.png",
+        ACID: "https://i.ibb.co/x8td9hTN/Gemini-Generated-Image-5e5pep5e5pep5e5p.png",
+        MOISTURE: "https://i.ibb.co/XfWzp5WY/IMG-7336.png",
+        DEFAULT: "https://i.ibb.co/XfWzp5WY/IMG-7336.png"
+    };
+
+    const imageUrl = themeImages[type] || themeImages.DEFAULT;
+
+    return (
+        <div 
+            className="absolute right-0 top-0 bottom-0 w-3/4 md:w-2/3 pointer-events-none"
+            style={{
+                // Standard CSS mask-image for fading effect (Left to Right: Transparent -> Opaque)
+                maskImage: 'linear-gradient(to left, black 0%, transparent 100%)',
+                WebkitMaskImage: 'linear-gradient(to left, black 0%, transparent 100%)'
+            }}
+        >
+            <img 
+                src={imageUrl} 
+                alt="Theme Background" 
+                // mix-blend-multiply: 讓白色背景變透明，融入卡片底色
+                // opacity-50: 稍微調低透明度，呈現浮水印質感
+                className="w-full h-full object-cover object-center opacity-50 mix-blend-multiply contrast-110"
+            />
+        </div>
+    );
+};
 
 const App: React.FC = () => {
   // State
@@ -76,9 +132,10 @@ const App: React.FC = () => {
     // Ensure types and orders exist (Migration safeguard)
     loadedProducts = loadedProducts.map((p, index) => ({
         ...p,
+        name: p.name || '未命名產品', // Safeguard against undefined name
         // Remove legacy POST_BOOSTER if it exists in old data
         timing: ((p.timing as string) === 'POST_BOOSTER' ? 'EVENING' : p.timing) as any,
-        productType: p.productType || analyzeProductInput(p.name).productType,
+        productType: p.productType || analyzeProductInput(p.name || '未命名產品').productType,
         order: typeof p.order === 'number' ? p.order : index
     }));
 
@@ -168,21 +225,23 @@ const App: React.FC = () => {
 
         請以 **JSON 格式** 回傳分析，包含以下欄位：
         
-        1. title: 一句優雅、充滿詩意的短標語 (例如：讓肌膚深呼吸的時刻)。
-        2. content: **不需要列出具體產品步驟**。請專注於「情緒價值」與「深層保養原理」。
-           - 請將內容擴充至 **約 300 字**。
-           - 務必 **分段撰寫** (在 JSON 字串中使用 \\n\\n 換行)，至少分為 3 段。
-           - 第一段：針對今日膚況與心情的同理與觀察。
-           - 第二段：分析膚況成因與保養原理。
-           - 第三段：給予溫暖的鼓勵與結尾。
+        1. "title": 一句優雅、充滿詩意的短標語 (例如：讓肌膚深呼吸的時刻)。
+        2. "content": **不需要列出具體產品步驟**。請專注於「情緒價值」與「深層保養原理」。
+           - 請將內容控制在 **約 200 字以內**。
+           - 務必 **分段撰寫** (在 JSON 字串中使用 \\n\\n 換行)，至少分為 2 段。
+           - 內容包含：對膚況的同理、簡短的成因分析與保養建議。
            - 語氣保持溫柔、高雅、專業。
-        3. actionItem: 一個具體、簡單的改善小撇步 (例如：多喝一杯溫水，或早點休息)。
+        3. "actionItem": 一個具體、簡單的改善小撇步 (例如：多喝一杯溫水，或早點休息)。
+        4. "historyStory": 一則 **簡短有趣的世界歷史小故事** (約 50-80 字)，內容不限，可以是關於美、生活、文化或冷知識，作為增廣見聞的小單元。
+        5. "quote": 一句適合今天的名言佳句 (關於愛自己、美麗、自信或生活哲學)，作為座右銘。
 
         Response Format:
         {
           "title": "...",
           "content": "...",
-          "actionItem": "..."
+          "actionItem": "...",
+          "historyStory": "...",
+          "quote": "..."
         }
       `;
 
@@ -342,87 +401,97 @@ const App: React.FC = () => {
   const feedbackData = currentLog?.aiFeedback ? parseFeedback(currentLog.aiFeedback) : null;
 
   return (
-    <div className="min-h-screen pb-24 font-sans text-gray-800 selection:bg-rose-200 bg-[#FDF2F8]">
+    <div className="min-h-screen pb-24 font-sans text-gray-800 selection:bg-rose-200">
       
-      {/* Header */}
-      <header className="bg-white/90 backdrop-blur-md sticky top-0 z-40 border-b border-rose-100 px-6 py-4 flex justify-between items-center shadow-sm">
-        <div>
-           <h1 className="text-2xl font-bold text-rose-900 tracking-tight">My Skin Diary</h1>
-           <p className="text-xs text-rose-400 font-medium tracking-widest uppercase">Noble Edition</p>
-        </div>
-        <div className="flex gap-2">
-          <button 
-            onClick={() => setIsProductManagerOpen(true)}
-            className="bg-rose-50 text-rose-500 p-2.5 rounded-full hover:bg-rose-100 transition-colors shadow-sm"
-            aria-label="我的保養櫃"
-          >
-            <Archive size={20} />
-          </button>
-          <button 
-            onClick={() => setIsCalendarOpen(true)}
-            className="bg-rose-50 text-rose-500 p-2.5 rounded-full hover:bg-rose-100 transition-colors shadow-sm"
-            aria-label="開啟月曆"
-          >
-            <Calendar size={20} />
-          </button>
-        </div>
-      </header>
+      {/* Combined Sticky Header Wrapper */}
+      <div className="sticky top-0 z-40">
+        {/* Header - Glassmorphic */}
+        <header className="px-6 py-4 flex justify-between items-center shadow-sm border-b border-white/40 glass-panel relative z-20">
+          <div>
+            <h1 className="text-3xl font-serif italic font-bold text-rose-900 tracking-wide text-glow">My Skin Diary</h1>
+            <p className="text-[10px] text-rose-400 font-bold tracking-[0.2em] uppercase mt-1">Noble Edition</p>
+          </div>
+          <div className="flex gap-3">
+            <button 
+              onClick={() => setIsProductManagerOpen(true)}
+              className="bg-white/50 text-rose-400 p-2.5 rounded-full hover:bg-white hover:text-rose-500 transition-all shadow-sm border border-rose-100 hover:shadow-md"
+              aria-label="我的保養櫃"
+            >
+              <Archive size={20} />
+            </button>
+            <button 
+              onClick={() => setIsCalendarOpen(true)}
+              className="bg-white/50 text-rose-400 p-2.5 rounded-full hover:bg-white hover:text-rose-500 transition-all shadow-sm border border-rose-100 hover:shadow-md"
+              aria-label="開啟月曆"
+            >
+              <Calendar size={20} />
+            </button>
+          </div>
+        </header>
 
-      {/* Timeline - Sticky Added */}
-      <section className="sticky top-[73px] z-30 bg-[#FDF2F8]/95 backdrop-blur-sm border-b border-rose-100/50 shadow-sm transition-all">
-        <div className="max-w-6xl mx-auto">
-             <Timeline 
-                selectedDate={selectedDate} 
-                onSelectDate={handleDateChange} 
-                completedDates={Object.keys(logs).filter(k => logs[k].completed)}
-            />
-        </div>
-      </section>
+        {/* Timeline */}
+        <section className="bg-white/30 backdrop-blur-md border-b border-white/20 shadow-sm transition-all py-1 relative z-10">
+          <div className="max-w-6xl mx-auto">
+              <Timeline 
+                  selectedDate={selectedDate} 
+                  onSelectDate={handleDateChange} 
+                  completedDates={Object.keys(logs).filter(k => logs[k].completed)}
+              />
+          </div>
+        </section>
+      </div>
 
       {/* Main Content: Responsive Grid */}
       <main className="max-w-6xl mx-auto px-4 sm:px-6 py-8">
         
         {/* Top Section: Date Info & Machine (Grid on Desktop) */}
-        <div className="grid grid-cols-1 md:grid-cols-12 gap-6 mb-8 items-start">
+        <div className="grid grid-cols-1 md:grid-cols-12 gap-6 mb-8 items-stretch">
             
             {/* Left: Date/Theme */}
-            <div className="md:col-span-7 lg:col-span-8 space-y-2">
-                <h2 className="text-3xl font-bold text-gray-800 px-1">{getDisplayDate(selectedDate)}</h2>
-                <div className={`p-6 rounded-2xl shadow-sm border border-opacity-50 relative overflow-hidden transition-all duration-500
-                ${defaultRoutine.isRestDay ? 'bg-gradient-to-br from-gray-50 to-slate-100 border-gray-200' : 'bg-gradient-to-br from-rose-50 to-pink-100 border-rose-200'}`}>
+            <div className="md:col-span-7 lg:col-span-8 flex flex-col justify-between">
+                <h2 className="text-4xl font-serif font-medium text-gray-800 px-1 mb-4 flex items-center">
+                    {getDisplayDate(selectedDate)}
+                </h2>
+                
+                {/* Dynamic Background Card */}
+                <div className={`flex-1 p-8 rounded-3xl shadow-lg border border-white/60 relative overflow-hidden transition-all duration-500 group
+                    ${getThemeBackgroundClass(defaultRoutine.theme)} backdrop-blur-md`}>
                     
-                    <div className="absolute -top-10 -right-10 w-32 h-32 bg-white opacity-40 rounded-full blur-2xl pointer-events-none"></div>
+                    {/* Decorative Background Pattern (Image Based) */}
+                    <ThemeFlowerPattern themeName={defaultRoutine.theme} />
+
+                    {/* Decorative Elements (Blobs) */}
+                    <div className="absolute top-0 right-0 w-64 h-64 bg-gradient-to-br from-white/40 to-transparent rounded-full blur-3xl -translate-y-1/2 translate-x-1/3 pointer-events-none"></div>
+                    <div className="absolute bottom-0 left-0 w-40 h-40 bg-gradient-to-tr from-white/60 to-transparent rounded-full blur-2xl translate-y-1/3 -translate-x-1/4 pointer-events-none"></div>
 
                     <div className="relative z-10">
-                        <span className="inline-block px-3 py-1 rounded-full text-xs font-bold bg-white/60 backdrop-blur text-gray-600 mb-2 shadow-sm">
-                        今日主題
+                        <span className="inline-block px-4 py-1.5 rounded-full text-xs font-bold bg-white/70 backdrop-blur border border-white text-gray-500 mb-3 shadow-sm tracking-widest uppercase">
+                        Today's Theme
                         </span>
-                        <h3 className="text-2xl font-bold text-gray-900 mb-2">{defaultRoutine.theme}</h3>
-                        <p className="text-gray-600 leading-relaxed opacity-90">{defaultRoutine.description}</p>
+                        <h3 className="text-3xl font-serif font-bold text-gray-800 mb-3 tracking-wide drop-shadow-sm">{defaultRoutine.theme}</h3>
+                        <p className="text-gray-700 leading-relaxed font-light text-lg drop-shadow-sm mix-blend-hard-light">{defaultRoutine.description}</p>
                     </div>
                 </div>
             </div>
 
             {/* Right: Machine Guide */}
             <div className="md:col-span-5 lg:col-span-4 h-full">
-                <div className="bg-white rounded-2xl p-5 border border-gray-100 shadow-sm h-full flex flex-col justify-center relative group">
-                    <div className="flex justify-between items-start mb-4">
-                        <h3 className="font-bold text-gray-800 flex items-center gap-2">
+                <div className="glass-panel rounded-3xl p-6 h-full flex flex-col justify-center relative group hover:shadow-xl transition-shadow duration-300">
+                    <div className="flex justify-between items-start mb-5">
+                        <h3 className="font-bold text-gray-700 flex items-center gap-2 font-serif text-lg">
                             <Sparkles size={18} className="text-rose-400"/> 美容儀模式
                         </h3>
                         <div className="flex gap-1">
-                             {/* New Edit Weekly Schedule Button */}
                              <button 
                                 onClick={() => setIsScheduleModalOpen(true)}
-                                className="p-2 rounded-full text-gray-400 hover:text-rose-500 hover:bg-rose-50 transition-colors"
+                                className="p-2 rounded-full text-gray-400 hover:text-rose-500 hover:bg-rose-50/50 transition-colors"
                                 title="編輯療程安排"
                             >
                                 <CalendarDays size={18} />
                             </button>
-                            {/* Existing Daily Adjust Button */}
                             <button 
                                 onClick={() => setIsMachineModalOpen(true)}
-                                className="p-2 rounded-full text-gray-400 hover:text-rose-500 hover:bg-rose-50 transition-colors"
+                                className="p-2 rounded-full text-gray-400 hover:text-rose-500 hover:bg-rose-50/50 transition-colors"
                                 title="今日調整"
                             >
                                 <Settings2 size={18} />
@@ -431,22 +500,27 @@ const App: React.FC = () => {
                     </div>
                     <MachineIndicator modes={activeMachineModes} />
                     <button 
-                         onClick={() => setIsScheduleModalOpen(true)}
-                         className="w-full mt-3 py-2 text-xs font-bold text-rose-400 bg-rose-50/50 rounded-lg hover:bg-rose-100/50 transition-colors flex items-center justify-center gap-1"
+                         onClick={() => setIsMachineModalOpen(true)}
+                         className="w-full mt-4 py-2.5 text-xs font-bold text-rose-500 bg-rose-50/50 border border-rose-100/50 rounded-xl hover:bg-rose-100/50 transition-colors flex items-center justify-center gap-1"
                     >
-                        <CalendarDays size={14} /> 編輯每週行程
+                        <Settings2 size={14} /> 編輯今日行程
                     </button>
                 </div>
             </div>
         </div>
 
         {/* Middle Section: Routines (Split Grid on Desktop) */}
-        <div className="grid grid-cols-1 md:grid-cols-2 gap-8 mb-10">
-            {/* Morning Routine */}
-            <section className="bg-white rounded-3xl p-6 shadow-lg shadow-gray-100 border border-gray-50 flex flex-col h-full">
-                <div className="flex items-center gap-2 mb-4 border-b border-gray-100 pb-3">
-                    <Sun className="text-amber-500" size={24} />
-                    <h3 className="font-bold text-xl text-gray-800">早間護膚</h3>
+        <div className="grid grid-cols-1 md:grid-cols-2 gap-8 mb-12">
+            {/* Morning Routine - WARM/SUN TINT */}
+            <section className="bg-gradient-to-br from-amber-50/80 via-white to-orange-50/50 backdrop-blur-md border border-amber-100/50 rounded-3xl p-7 flex flex-col h-full shadow-sm hover:shadow-lg transition-all duration-300">
+                <div className="flex items-center gap-3 mb-6 border-b border-amber-100 pb-4">
+                    <div className="p-2 bg-amber-100 rounded-full border border-amber-200 text-amber-500 shadow-sm ring-2 ring-white">
+                        <Sun size={24} />
+                    </div>
+                    <div>
+                        <h3 className="font-serif font-bold text-2xl text-amber-950">Morning Ritual</h3>
+                        <p className="text-xs text-amber-500 uppercase tracking-widest font-medium">Awaken & Protect</p>
+                    </div>
                 </div>
                 <div className="flex-1">
                     <ProductList 
@@ -462,11 +536,16 @@ const App: React.FC = () => {
                 </div>
             </section>
 
-            {/* Evening Routine */}
-            <section className="bg-white rounded-3xl p-6 shadow-lg shadow-gray-100 border border-gray-50 flex flex-col h-full">
-                <div className="flex items-center gap-2 mb-4 border-b border-gray-100 pb-3">
-                    <Moon className="text-indigo-500" size={24} />
-                    <h3 className="font-bold text-xl text-gray-800">晚間護膚</h3>
+            {/* Evening Routine - COOL/MOON TINT */}
+            <section className="bg-gradient-to-br from-indigo-50/80 via-white to-slate-50/50 backdrop-blur-md border border-indigo-100/50 rounded-3xl p-7 flex flex-col h-full shadow-sm hover:shadow-lg transition-all duration-300">
+                <div className="flex items-center gap-3 mb-6 border-b border-indigo-100 pb-4">
+                    <div className="p-2 bg-indigo-100 rounded-full border border-indigo-200 text-indigo-500 shadow-sm ring-2 ring-white">
+                        <Moon size={24} />
+                    </div>
+                    <div>
+                        <h3 className="font-serif font-bold text-2xl text-indigo-950">Evening Ritual</h3>
+                        <p className="text-xs text-indigo-500 uppercase tracking-widest font-medium">Repair & Nourish</p>
+                    </div>
                 </div>
                 <div className="flex-1">
                     <ProductList 
@@ -486,24 +565,30 @@ const App: React.FC = () => {
                         setEditingProduct(null);
                         setIsModalOpen(true);
                     }}
-                    className="mt-6 w-full py-3 border-2 border-dashed border-gray-200 rounded-xl text-gray-400 text-sm font-medium hover:border-rose-300 hover:text-rose-500 hover:bg-rose-50 transition-all flex items-center justify-center gap-2"
+                    className="mt-6 w-full py-3.5 border border-dashed border-indigo-200 rounded-2xl text-indigo-400 text-sm font-bold bg-indigo-50/30 hover:bg-indigo-50 hover:border-indigo-300 hover:text-indigo-500 transition-all flex items-center justify-center gap-2 group"
                 >
-                    <Plus size={16} /> 加入新產品
+                    <Plus size={16} className="group-hover:scale-110 transition-transform"/> 加入保養步驟
                 </button>
             </section>
         </div>
 
         {/* Bottom Section: Journal & Diagnosis (Centered) */}
         <section className="max-w-3xl mx-auto">
-            <div className="flex justify-between items-end mb-3">
-              <h3 className="font-bold text-xl text-gray-800 flex items-center gap-2">
-                  <Edit3 size={20} className="text-rose-400"/>
-                  肌膚日記與診斷
+            <div className="flex justify-between items-end mb-4 px-2">
+              <h3 className="font-serif font-bold text-2xl text-gray-800 flex items-center gap-3">
+                  <div className="p-1.5 bg-rose-100 rounded-lg text-rose-500">
+                    <Edit3 size={18} />
+                  </div>
+                  Skin Diary & AI Insights
               </h3>
             </div>
             
-            <div className="bg-white rounded-3xl shadow-sm border border-gray-100 overflow-hidden p-6 mb-6">
-                
+            <div className="glass-panel rounded-3xl overflow-hidden p-8 mb-8 relative">
+                {/* Decoration */}
+                <div className="absolute top-0 right-0 p-10 opacity-5 pointer-events-none">
+                    <Quote size={100} />
+                </div>
+
                 {/* Skin Condition Selector */}
                 <SkinConditionSelector 
                     selected={skinConditionInput}
@@ -513,20 +598,20 @@ const App: React.FC = () => {
                 <textarea
                     value={noteInput}
                     onChange={(e) => setNoteInput(e.target.value)}
-                    placeholder="紀錄更多細節（例如：昨晚用 A 醇後有點刺痛...）"
-                    className="w-full h-32 p-4 bg-gray-50 rounded-2xl focus:ring-2 focus:ring-rose-100 focus:outline-none resize-none text-base text-gray-600 leading-relaxed appearance-none border border-gray-100 mb-4 transition-all"
+                    placeholder="紀錄更多細節，例如：昨晚使用 A 醇後的肌膚反應..."
+                    className="w-full h-32 p-5 bg-white/60 backdrop-blur-sm rounded-2xl focus:ring-2 focus:ring-rose-200 focus:outline-none resize-none text-base text-gray-700 leading-relaxed appearance-none border border-rose-100 mb-6 transition-all placeholder:text-gray-400 shadow-inner"
                 />
                 
                 <div className="flex justify-end">
                     <button 
                         onClick={saveJournal}
                         disabled={isGeneratingAI || (!noteInput.trim() && skinConditionInput.length === 0)}
-                        className="flex items-center gap-2 px-8 py-3 bg-rose-500 text-white font-bold rounded-xl shadow-md hover:bg-rose-600 disabled:opacity-50 disabled:cursor-not-allowed transition-all active:scale-95"
+                        className="flex items-center gap-2 px-8 py-3.5 bg-gradient-to-r from-rose-400 to-rose-500 text-white font-bold rounded-2xl shadow-lg shadow-rose-200 hover:shadow-rose-300 hover:-translate-y-0.5 disabled:opacity-50 disabled:cursor-not-allowed transition-all active:scale-95 disabled:active:scale-100 disabled:hover:translate-y-0"
                     >
                         {isGeneratingAI ? (
-                            <><Loader2 size={18} className="animate-spin"/> AI 診斷中...</>
+                            <><Loader2 size={18} className="animate-spin"/> 正在諮詢 AI 顧問...</>
                         ) : (
-                            <><Sparkles size={18} /> {currentLog ? '更新並重新分析' : '儲存並分析'}</>
+                            <><Sparkles size={18} /> {currentLog ? '更新日記並分析' : '儲存日記並分析'}</>
                         )}
                     </button>
                 </div>
@@ -535,36 +620,65 @@ const App: React.FC = () => {
             {/* AI Feedback Card */}
             {feedbackData && (
                 <div className="animate-[fadeIn_0.5s_ease-out]">
-                    <div className="bg-white/60 backdrop-blur-md rounded-3xl border border-white/50 shadow-sm overflow-hidden">
+                    <div className="glass-panel rounded-3xl border border-white/60 shadow-xl overflow-hidden relative">
+                        {/* Shimmer overlay */}
+                        <div className="absolute inset-0 bg-gradient-to-br from-white/40 via-transparent to-rose-50/30 pointer-events-none"></div>
+
                         {/* 1. Header & Title */}
-                        <div className="px-6 py-5 border-b border-rose-50/50 flex items-center gap-3">
-                             <div className="bg-rose-100 p-2.5 rounded-full text-rose-500">
-                                <Sparkles size={20} />
+                        <div className="px-8 py-6 border-b border-rose-100/50 flex items-center gap-4 relative z-10">
+                             <div className="bg-gradient-to-br from-rose-100 to-pink-200 p-3 rounded-2xl text-rose-600 shadow-sm ring-4 ring-rose-50">
+                                <Sparkles size={22} />
                              </div>
                              <div>
-                                 <h4 className="font-serif text-rose-900 font-bold text-xl tracking-wide">
+                                 <h4 className="font-serif text-rose-900 font-bold text-2xl tracking-wide">
                                      {feedbackData.title || "AI 美容顧問"}
                                  </h4>
+                                 <p className="text-xs text-rose-400 uppercase tracking-widest font-medium mt-1">Personalized Analysis</p>
                              </div>
                         </div>
 
-                        <div className="p-6 space-y-6">
+                        <div className="p-8 space-y-8 relative z-10">
                             {/* 2. Diagnosis Content */}
-                            <div className="relative">
-                                <Quote size={24} className="absolute -top-3 -left-2 text-rose-200 fill-rose-50" />
-                                <p className="text-gray-600 text-base leading-8 pl-8 relative z-10 whitespace-pre-line">
+                            <div className="relative pl-6 border-l-2 border-rose-200">
+                                <Quote size={32} className="absolute -top-4 -left-5 text-rose-200/50 fill-rose-100" />
+                                <p className="text-gray-600 text-[15px] leading-8 font-light whitespace-pre-line">
                                     {feedbackData.content}
                                 </p>
                             </div>
 
                             {/* 3. Action Item */}
                             {feedbackData.actionItem && (
-                                <div className="bg-gradient-to-r from-rose-50 to-white border border-rose-100 rounded-2xl p-4 flex items-start gap-4 shadow-sm">
-                                    <div className="mt-0.5 bg-rose-500 text-white text-[10px] px-2 py-1 rounded font-bold shrink-0">
+                                <div className="bg-gradient-to-r from-rose-50/80 to-white border border-rose-100 rounded-2xl p-5 flex items-start gap-4 shadow-sm">
+                                    <div className="mt-1 bg-rose-500 text-white text-[10px] px-2.5 py-1 rounded-md font-bold shrink-0 tracking-wider shadow-sm">
                                         ACTION
                                     </div>
-                                    <p className="text-rose-700 font-medium text-base">
+                                    <p className="text-rose-800 font-medium text-base">
                                         {feedbackData.actionItem}
+                                    </p>
+                                </div>
+                            )}
+
+                            {/* 4. History Story (Replaces Joke) */}
+                            {feedbackData.historyStory && (
+                                <div className="pt-2">
+                                    <div className="bg-blue-50/60 rounded-xl p-5 border border-blue-100/50 flex items-start gap-4 text-sm text-gray-600 group hover:bg-blue-50 transition-colors">
+                                         <div className="bg-white p-2 rounded-full shadow-sm text-blue-400 group-hover:scale-110 transition-transform mt-0.5">
+                                            <BookOpen size={20} />
+                                         </div>
+                                         <div className="flex-1">
+                                            <span className="text-[10px] font-bold text-blue-400 uppercase tracking-widest block mb-2">History & Culture</span>
+                                            <span className="leading-relaxed font-light text-gray-700 text-[15px]">{feedbackData.historyStory}</span>
+                                         </div>
+                                    </div>
+                                </div>
+                            )}
+
+                            {/* 5. Quote Section (Motto) - Moved to Bottom */}
+                            {feedbackData.quote && (
+                                <div className="mt-6 pt-6 border-t border-rose-100/50 flex flex-col items-center justify-center text-center">
+                                    <Feather size={18} className="text-rose-300 mb-2" />
+                                    <p className="font-serif italic text-gray-600 text-lg leading-relaxed">
+                                        "{feedbackData.quote}"
                                     </p>
                                 </div>
                             )}
@@ -577,19 +691,19 @@ const App: React.FC = () => {
       </main>
 
       {/* Floating Action Button Bar */}
-      <div className="fixed bottom-0 left-0 w-full p-4 bg-white/80 backdrop-blur-lg border-t border-gray-100 z-20 shadow-[0_-5px_15px_rgba(0,0,0,0.02)]">
+      <div className="fixed bottom-0 left-0 w-full p-4 bg-white/70 backdrop-blur-xl border-t border-white/50 z-20 shadow-[0_-10px_30px_rgba(0,0,0,0.03)]">
         <div className="max-w-md mx-auto">
             {isCompleted ? (
                 <button 
                     onClick={toggleComplete}
-                    className="w-full flex items-center justify-center gap-2 py-4 rounded-2xl bg-gray-100 text-gray-500 font-bold text-lg shadow-inner active:scale-98 transition-all"
+                    className="w-full flex items-center justify-center gap-2 py-4 rounded-2xl bg-gray-100/80 text-gray-500 font-bold text-lg shadow-inner active:scale-98 transition-all hover:bg-gray-200/80"
                 >
                     <Undo2 size={20} /> 撤銷完成 (Undo)
                 </button>
             ) : (
                 <button 
                     onClick={toggleComplete}
-                    className="w-full flex items-center justify-center gap-2 py-4 rounded-2xl bg-gradient-to-r from-rose-400 to-pink-500 text-white font-bold text-lg shadow-lg shadow-rose-200 hover:shadow-rose-300 active:scale-95 transition-all"
+                    className="w-full flex items-center justify-center gap-2 py-4 rounded-2xl bg-gradient-to-r from-rose-400 to-rose-600 text-white font-bold text-lg shadow-lg shadow-rose-200 hover:shadow-rose-300 hover:-translate-y-0.5 active:scale-95 transition-all"
                 >
                     <CheckCircle size={24} /> 完成今日護膚
                 </button>
