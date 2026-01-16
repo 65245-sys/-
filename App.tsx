@@ -439,7 +439,23 @@ const App: React.FC = () => {
             </button>
           </div>
         </header>
-
+          {aiFeedback && (
+                  <div className="mb-6 mx-4 bg-gradient-to-r from-rose-50 to-orange-50 p-6 rounded-2xl border border-rose-100 shadow-sm">
+                    <div className="flex items-start gap-4">
+                      <div className="p-3 bg-white rounded-full shadow-sm">
+                        <Sparkles className="w-6 h-6 text-rose-400" />
+                      </div>
+                      <div className="flex-1">
+                        <h3 className="text-lg font-serif font-medium text-gray-800 mb-2">
+                          {aiFeedback.title}
+                        </h3>
+                        <p className="text-gray-600 leading-relaxed text-sm">
+                          {aiFeedback.content}
+                        </p>
+                      </div>
+                    </div>
+                  </div>
+                )}
         {/* Timeline */}
         <section className="bg-white/30 backdrop-blur-md border-b border-white/20 shadow-sm transition-all py-1 relative z-10">
           <div className="max-w-6xl mx-auto">
