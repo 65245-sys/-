@@ -14,7 +14,7 @@ interface Props {
 // ✅ Cloudflare Worker 網址
 const WORKER_URL = "https://skincare.65245.workers.dev";
 
-// ✅ 產品類型對照表 (AI 會回傳 ID，我們自動選中對應按鈕)
+// ✅ 產品類型對照表
 const PRODUCT_TYPE_OPTIONS = [
     { id: 'CLEANSER', label: '潔顏/洗面乳' },
     { id: 'TONER', label: '化妝水/爽膚水' },
@@ -32,7 +32,7 @@ const PRODUCT_TYPE_OPTIONS = [
     { id: 'OTHER', label: '其他' },
 ];
 
-// ✅ 頻率設定 (0 是星期日)
+// ✅ 頻率設定
 const FREQUENCY_PRESETS = [
     { label: '每天', days: [0, 1, 2, 3, 4, 5, 6] },
     { label: '平日 (一~五)', days: [1, 2, 3, 4, 5] },
@@ -63,7 +63,7 @@ const AddProductModal: React.FC<Props> = ({ isOpen, onClose, onAdd, onUpdate, in
     } else if (isOpen) {
         setName('');
         setTiming(null);
-        setSelectedDays([0, 1, 2, 3, 4, 5, 6]); // 預設全選
+        setSelectedDays([0, 1, 2, 3, 4, 5, 6]);
         setProductType('');
         setAiAnalysis(null);
     }
@@ -72,23 +72,30 @@ const AddProductModal: React.FC<Props> = ({ isOpen, onClose, onAdd, onUpdate, in
   const isEditing = !!initialProduct;
   const isNameEmpty = name.trim().length === 0;
 
-  // 圖片轉 Base64
-  const fileToBase64 = (file: File): Promise<string> => {
+  // 📸 修正：回傳 Base64 與 MIME Type
+  const fileToBase64 = (file: File): Promise<{ base64: string, mimeType: string }> => {
     return new Promise((resolve, reject) => {
       const reader = new FileReader();
       reader.readAsDataURL(file);
-      reader.onload = () => resolve((reader.result as string).split(',')[1]);
+      reader.onload = () => {
+        const result = reader.result as string;
+        // 自動偵測 mimeType (例如 image/png 或 image/jpeg)
+        const mimeType = result.match(/data:([^;]+);/)?.[1] || "image/jpeg";
+        const base64 = result.split(',')[1];
+        resolve({ base64, mimeType });
+      };
       reader.onerror = error => reject(error);
     });
   };
 
   // 🤖 呼叫 AI Worker (通用函數)
-  const callAIWorker = async (promptText: string, base64Image?: string) => {
+  const callAIWorker = async (promptText: string, base64Image?: string, mimeType: string = "image/jpeg") => {
     try {
       const payload: any = { contents: [{ parts: [{ text: promptText }] }] };
       if (base64Image) {
+        // 確保格式正確傳遞給 Worker
         payload.contents[0].parts.push({
-          inline_data: { mime_type: "image/jpeg", data: base64Image }
+          inline_data: { mime_type: mimeType, data: base64Image }
         });
       }
 
@@ -105,17 +112,25 @@ const AddProductModal: React.FC<Props> = ({ isOpen, onClose, onAdd, onUpdate, in
 
       if (!response.ok) throw new Error("連線失敗");
       const data = await response.json();
+      
       const aiText = data.candidates?.[0]?.content?.parts?.[0]?.text;
       if (!aiText) throw new Error("AI 無回傳");
 
-      return JSON.parse(aiText.replace(/```json|```/g, "").trim());
+      // 安全解析 JSON
+      try {
+          const cleanJson = aiText.replace(/```json|```/g, "").trim();
+          return JSON.parse(cleanJson);
+      } catch (parseError) {
+          console.warn("AI 回傳了非 JSON 格式:", aiText);
+          throw new Error("AI 無法辨識圖片，請重試");
+      }
     } catch (error: any) {
       console.error("AI Error:", error);
       throw error;
     }
   };
 
-  // 📸 1. 圖片辨識 (包含自動分類)
+  // 📸 1. 圖片辨識
   const handleImageUpload = async (e: React.ChangeEvent<HTMLInputElement>) => {
     const file = e.target.files?.[0];
     if (!file) return;
@@ -123,9 +138,9 @@ const AddProductModal: React.FC<Props> = ({ isOpen, onClose, onAdd, onUpdate, in
     setIsAnalyzingImage(true);
     setAiAnalysis(null);
     try {
-      const base64Data = await fileToBase64(file);
+      // 取得正確的 mimeType
+      const { base64, mimeType } = await fileToBase64(file);
       
-      // ✨ AI 指令：請它回傳準確的分類 ID
       const prompt = `
         分析這張保養品圖片。
         回傳 JSON 格式：
@@ -138,23 +153,23 @@ const AddProductModal: React.FC<Props> = ({ isOpen, onClose, onAdd, onUpdate, in
         }
       `;
 
-      const result = await callAIWorker(prompt, base64Data);
+      // 傳入 mimeType
+      const result = await callAIWorker(prompt, base64, mimeType);
 
-      // ✨ 自動填入欄位
       if (result.identifiedName) setName(result.identifiedName);
-      if (result.productType) setProductType(result.productType); // 自動選分類
-      if (result.timing) setTiming(result.timing); // 自動選時段
+      if (result.productType) setProductType(result.productType);
+      if (result.timing) setTiming(result.timing);
       
       setAiAnalysis({ reason: result.reason, warning: result.warning });
 
     } catch (error: any) {
-      alert("圖片辨識失敗，請稍後再試");
+      alert("圖片辨識失敗：" + error.message);
     } finally {
       setIsAnalyzingImage(false);
     }
   };
 
-  // ✍️ 2. 文字輸入辨識 (包含自動分類)
+  // ✍️ 2. 文字輸入辨識
   const handleNameBlur = async () => {
     if (isNameEmpty || isAnalyzingImage || isAnalyzingText) return;
     setIsAnalyzingText(true);
@@ -164,7 +179,7 @@ const AddProductModal: React.FC<Props> = ({ isOpen, onClose, onAdd, onUpdate, in
             使用者輸入: "${name}"。
             請分析並回傳 JSON：
             {
-              "productType": "必須從以下 ID 擇一: CLEANSER, TONER, ESSENCE, SERUM, EYE_CREAM, LOTION, CREAM, OIL, SUNSCREEN, MASK, ACID, RETINOL, SCRUB",
+              "productType": "從以下 ID 擇一: CLEANSER, TONER, ESSENCE, SERUM, EYE_CREAM, LOTION, CREAM, OIL, SUNSCREEN, MASK, ACID, RETINOL, SCRUB, OTHER",
               "timing": "MORNING, EVENING, 或 BOTH",
               "reason": "簡單說明",
               "warning": "若含刺激成分請警告，無則 null"
@@ -172,7 +187,6 @@ const AddProductModal: React.FC<Props> = ({ isOpen, onClose, onAdd, onUpdate, in
         `;
         const result = await callAIWorker(prompt);
         
-        // ✨ 自動填入
         if (result.productType) setProductType(result.productType);
         if (result.timing) setTiming(result.timing);
         setAiAnalysis({ reason: result.reason, warning: result.warning });
@@ -184,7 +198,7 @@ const AddProductModal: React.FC<Props> = ({ isOpen, onClose, onAdd, onUpdate, in
     }
   };
 
-  // 日期選擇與範本
+  // 日期選擇與範本 (保持不變)
   const toggleDay = (d: number) => setSelectedDays(prev => prev.includes(d) ? prev.filter(x => x !== d) : [...prev, d].sort());
   const applyFrequency = (days: number[]) => setSelectedDays(days);
   const isPresetActive = (days: number[]) => {
@@ -295,7 +309,7 @@ const AddProductModal: React.FC<Props> = ({ isOpen, onClose, onAdd, onUpdate, in
              </div>
           </div>
 
-          {/* 產品類型 (AI 自動選，也可手動選) */}
+          {/* 產品類型 */}
           <div>
             <label className="block text-sm font-bold text-gray-700 mb-3 ml-1 flex items-center gap-2">
                 <Tag size={16} className="text-rose-400"/> 產品類型 (AI 自動選擇)
@@ -317,7 +331,7 @@ const AddProductModal: React.FC<Props> = ({ isOpen, onClose, onAdd, onUpdate, in
             </div>
           </div>
 
-          {/* 頻率選擇 (星期天開頭) */}
+          {/* 頻率選擇 */}
           <div>
              <div className="flex justify-between items-end mb-3">
                  <label className="text-sm font-bold text-gray-700 ml-1 flex items-center gap-2">
@@ -325,7 +339,6 @@ const AddProductModal: React.FC<Props> = ({ isOpen, onClose, onAdd, onUpdate, in
                  </label>
              </div>
 
-             {/* 快速按鈕 */}
              <div className="flex flex-wrap gap-2 mb-4">
                 {FREQUENCY_PRESETS.map((preset) => {
                     const isActive = isPresetActive(preset.days);
@@ -347,9 +360,8 @@ const AddProductModal: React.FC<Props> = ({ isOpen, onClose, onAdd, onUpdate, in
                 })}
              </div>
 
-             {/* 星期圓圈圈 (修改這裡：0=星期日 排第一個) */}
              <div className="flex justify-between px-1">
-                 {[0, 1, 2, 3, 4, 5, 6].map(d => { // 🌟 順序改成 日 -> 六
+                 {[0, 1, 2, 3, 4, 5, 6].map(d => {
                      const isSelected = selectedDays.includes(d);
                      const isWeekend = d === 0 || d === 6;
                      return (
