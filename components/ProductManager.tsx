@@ -10,7 +10,7 @@ interface Props {
   onRemove: (id: string) => void;
   onEdit: (product: Product) => void;
   onOpenAddModal: () => void;
-  // 新增：選擇模式用的 Props
+  // [修正] 新增選擇模式的定義
   onSelect?: (product: Product) => void;
   isSelectMode?: boolean;
 }
@@ -27,6 +27,7 @@ const ProductManager: React.FC<Props> = ({
 }) => {
   if (!isOpen) return null;
 
+  // 排序產品
   const displayProducts = [...products].sort((a, b) => a.name.localeCompare(b.name, 'zh-TW'));
 
   return (
@@ -58,7 +59,7 @@ const ProductManager: React.FC<Props> = ({
                 {displayProducts.map((p) => (
                     <li
                         key={p.id}
-                        // 如果是選擇模式，點擊整個卡片就觸發選擇
+                        // [修正] 選擇模式下，點擊卡片觸發 onSelect
                         onClick={() => isSelectMode && onSelect && onSelect(p)}
                         className={`
                             flex items-center justify-between bg-white border p-3 rounded-2xl shadow-sm transition-all group h-full
