@@ -1,6 +1,6 @@
 import React, { useRef, useEffect, useMemo } from 'react';
 
-// --- 1. 本地定義日期工具 (移除 date-fns 依賴，確保部署成功) ---
+// --- 純 JS 日期工具 (移除所有外部依賴) ---
 const getLocalYMD = (date: Date) => {
   const y = date.getFullYear();
   const m = String(date.getMonth() + 1).padStart(2, '0');
@@ -25,7 +25,6 @@ const addDays = (date: Date, days: number) => {
   return result;
 };
 
-// 格式化顯示 (中文)
 const formatMonth = (date: Date) => `${date.getMonth() + 1}月`;
 const formatWeekday = (date: Date) => {
   const days = ['週日', '週一', '週二', '週三', '週四', '週五', '週六'];
@@ -42,7 +41,7 @@ interface Props {
 const Timeline: React.FC<Props> = ({ selectedDate, onSelectDate, completedDates }) => {
   const scrollContainerRef = useRef<HTMLDivElement>(null);
   
-  // 2. 產生日期範圍：前後 180 天 (模擬無限捲動)
+  // 產生日期範圍：前後 180 天 (模擬無限捲動)
   const dates = useMemo(() => {
     const today = getStartOfToday();
     const range = 180;
@@ -57,7 +56,7 @@ const Timeline: React.FC<Props> = ({ selectedDate, onSelectDate, completedDates 
 
   const today = useMemo(() => getStartOfToday(), []);
 
-  // 3. 自動捲動邏輯 (修正版：加入延遲以確保 iOS 置中生效)
+  // 自動捲動邏輯 (修正版：加入延遲以確保 iOS 置中生效)
   useEffect(() => {
     // 加入 100ms 延遲，等待 iOS Safari 畫面渲染完成
     const timer = setTimeout(() => {
