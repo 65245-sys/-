@@ -4,7 +4,6 @@ import { DailyLog, DailyLogsMap, Product, MachineMode, DayRoutine } from './type
 import { getDisplayDate, formatDateKey } from './utils/dateUtils';
 import { getRoutineForDay, INITIAL_PRODUCTS, analyzeProductInput, getOptimalProductOrder, DEFAULT_WEEKLY_SCHEDULE, getThemeType } from './utils/routineLogic';
 
-// Components
 import Timeline from './components/Timeline';
 import MachineIndicator from './components/MachineIndicator';
 import ProductList from './components/ProductList';
@@ -15,7 +14,7 @@ import SkinConditionSelector from './components/SkinConditionSelector';
 import MachineSelectorModal from './components/MachineSelectorModal';
 import WeeklyScheduleModal from './components/WeeklyScheduleModal';
 
-// Helper: Dynamic Theme Background Colors
+// --- Helper Components ---
 const getThemeBackgroundClass = (themeName: string) => {
     const type = getThemeType(themeName);
     switch(type) {
@@ -45,7 +44,6 @@ const ThemeFlowerPattern = ({ themeName }: { themeName: string }) => {
     );
 };
 
-// --- 設定與備份 Modal ---
 const SettingsModal = ({ isOpen, onClose, onImport, onExport }: { isOpen: boolean; onClose: () => void; onImport: (e: React.ChangeEvent<HTMLInputElement>) => void; onExport: () => void }) => {
     if (!isOpen) return null;
     return (
@@ -90,7 +88,6 @@ const SettingsModal = ({ isOpen, onClose, onImport, onExport }: { isOpen: boolea
 const App: React.FC = () => {
   // State
   const [selectedDate, setSelectedDate] = useState<Date>(new Date());
-  // logs 現在會包含: aiResponse, customRoutine (當天的獨立保養品清單)
   const [logs, setLogs] = useState<DailyLogsMap>({});
   const [products, setProducts] = useState<Product[]>([]);
   const [weeklySchedule, setWeeklySchedule] = useState<Record<number, DayRoutine>>(DEFAULT_WEEKLY_SCHEDULE);
@@ -106,6 +103,9 @@ const App: React.FC = () => {
   const [isScheduleModalOpen, setIsScheduleModalOpen] = useState(false);
   const [isSettingsOpen, setIsSettingsOpen] = useState(false);
   
+  // New: 產品選擇模式 (Select Mode)
+  const [isProductSelectorOpen, setIsProductSelectorOpen] = useState(false);
+  
   // Input States
   const [noteInput, setNoteInput] = useState('');
   const [skinConditionInput, setSkinConditionInput] = useState<string[]>([]);
@@ -120,7 +120,7 @@ const App: React.FC = () => {
   const defaultRoutine = getRoutineForDay(selectedDate, weeklySchedule);
   const activeMachineModes = currentLog?.machineModes || defaultRoutine.machineModes;
 
-  // --- 判斷日期狀態 ---
+  // --- Date Check ---
   const isPastDate = useMemo(() => {
       const today = new Date();
       today.setHours(0,0,0,0);
@@ -129,55 +129,33 @@ const App: React.FC = () => {
       return current < today;
   }, [selectedDate]);
 
-  // --- 關鍵讀取邏輯：決定今日顯示的產品清單 ---
-  // 1. 先看當天日記有沒有 "customRoutine" (專屬清單)
-  // 2. 如果沒有，再看有沒有舊版的 "routineSnapshot" (相容舊資料)
-  // 3. 如果都沒有，才使用全域 "products" (預設)
+  // --- Display Logic ---
+  // 優先顯示「當天專屬清單」，若無則顯示「快照」，最後才顯示「全域」
   const displayProducts = useMemo(() => {
       if (currentLog?.customRoutine) return currentLog.customRoutine;
       if (currentLog?.routineSnapshot) return currentLog.routineSnapshot;
       return products;
   }, [currentLog, products]);
 
-  // 是否正在檢視一個「已經獨立/與全域脫鉤」的清單 (例如過去的紀錄)
-  // 只有當「是過去日期」且「有專屬紀錄」時，我們才視為純歷史檢視
-  // 但依照新邏輯，任何編輯都會產生 customRoutine，所以我們主要用這個來標示「獨立作業」
   const hasCustomRoutine = !!(currentLog?.customRoutine || currentLog?.routineSnapshot);
 
-  // Persistence (Load)
+  // Persistence (Load/Save)
   useEffect(() => {
     const savedLogs = localStorage.getItem('skin_logs');
     if (savedLogs) setLogs(JSON.parse(savedLogs));
-
     const savedSchedule = localStorage.getItem('skin_weekly_schedule');
     if (savedSchedule) setWeeklySchedule(JSON.parse(savedSchedule));
-
     const savedUnifiedProducts = localStorage.getItem('skin_products_unified');
-    let loadedProducts: Product[] = [];
     if (savedUnifiedProducts) {
-      loadedProducts = JSON.parse(savedUnifiedProducts);
+      setProducts(JSON.parse(savedUnifiedProducts));
     } else {
-      loadedProducts = [...INITIAL_PRODUCTS];
+      setProducts(INITIAL_PRODUCTS); // Assuming migration done
     }
-    loadedProducts = loadedProducts.map((p, index) => ({
-        ...p,
-        name: p.name || '未命名產品',
-        timing: ((p.timing as string) === 'POST_BOOSTER' ? 'EVENING' : p.timing) as any,
-        productType: p.productType || analyzeProductInput(p.name || '未命名產品').productType,
-        order: typeof p.order === 'number' ? p.order : index
-    }));
-    setProducts(loadedProducts);
     isLoaded.current = true;
   }, []);
 
-  // Persistence (Save)
-  useEffect(() => {
-    localStorage.setItem('skin_logs', JSON.stringify(logs));
-  }, [logs]);
-
-  useEffect(() => {
-    if (isLoaded.current) localStorage.setItem('skin_products_unified', JSON.stringify(products));
-  }, [products]);
+  useEffect(() => { localStorage.setItem('skin_logs', JSON.stringify(logs)); }, [logs]);
+  useEffect(() => { if (isLoaded.current) localStorage.setItem('skin_products_unified', JSON.stringify(products)); }, [products]);
 
   const handleSaveSchedule = (newSchedule: Record<number, DayRoutine>) => {
       setWeeklySchedule(newSchedule);
@@ -185,18 +163,91 @@ const App: React.FC = () => {
       setIsScheduleModalOpen(false);
   };
 
-  // --- Date Change: Load Data ---
   useEffect(() => {
     setNoteInput(logs[dateKey]?.note || '');
     setSkinConditionInput(logs[dateKey]?.skinConditions || []);
-    if (logs[dateKey]?.aiResponse) {
-        setAiFeedback(logs[dateKey].aiResponse);
-    } else {
-        setAiFeedback(null);
-    }
+    if (logs[dateKey]?.aiResponse) setAiFeedback(logs[dateKey].aiResponse);
+    else setAiFeedback(null);
   }, [dateKey, logs]);
 
-  // --- Handlers: Backup & Restore ---
+  // Handlers
+  const toggleComplete = () => {
+    setLogs(prev => {
+        const currentData = prev[dateKey];
+        const isNowCompleted = !currentData?.completed;
+        let snapshot = currentData?.customRoutine || currentData?.routineSnapshot;
+        if (isNowCompleted && !snapshot) snapshot = [...products];
+        return {
+            ...prev,
+            [dateKey]: {
+                ...prev[dateKey],
+                completed: isNowCompleted,
+                timestamp: isNowCompleted ? Date.now() : undefined,
+                note: noteInput,
+                skinConditions: skinConditionInput,
+                customRoutine: snapshot
+            }
+        };
+    });
+  };
+  const saveJournal = async () => {
+    const updatedLog = {
+      ...logs[dateKey],
+      completed: logs[dateKey]?.completed || false,
+      note: noteInput,
+      skinConditions: skinConditionInput,
+      customRoutine: logs[dateKey]?.customRoutine
+    };
+    setLogs(prev => ({ ...prev, [dateKey]: updatedLog }));
+    if (noteInput.trim().length > 1 || skinConditionInput.length > 0) {
+      await generateAIFeedback(noteInput, skinConditionInput);
+    }
+  };
+  const handleSaveMachineModes = (modes: MachineMode[]) => {
+      setLogs(prev => ({ ...prev, [dateKey]: { ...prev[dateKey], machineModes: modes } }));
+  };
+  
+  const generateAIFeedback = async (note: string, conditions: string[]) => {
+        setIsGeneratingAI(true);
+        try {
+          const workerUrl = "https://skincare.65245.workers.dev";
+          const promptText = `你是一位專業皮膚科顧問，同時也是一位溫暖、善解人意的閨蜜。
+    今日膚況標籤: ${conditions.join(', ')}
+    日記與心情備註: "${note}"
+    請回傳 JSON 格式，包含: { "title": "...", "content": "...", "actionItem": "...", "historyStory": "...", "quote": "..." }`;
+    
+          const response = await fetch(workerUrl, {
+            method: "POST",
+            headers: { "Content-Type": "application/json" },
+            body: JSON.stringify({ contents: [{ parts: [{ text: promptText }] }] }),
+          });
+          if (!response.ok) throw new Error(`Worker 連線失敗: ${response.status}`);
+          const data = await response.json();
+          const aiText = data.candidates?.[0]?.content?.parts?.[0]?.text;
+          if (!aiText) throw new Error("AI 回應為空");
+          const jsonStr = aiText.replace(/```json|```/g, "").trim();
+          const result = JSON.parse(jsonStr);
+          
+          const feedbackData = { title: result.title || "肌膚的輕聲細語", content: result.content || "暫時無法讀取建議。", ...result };
+          
+          setAiFeedback(feedbackData);
+          setLogs(prev => ({
+              ...prev,
+              [dateKey]: {
+                  ...prev[dateKey],
+                  aiResponse: feedbackData
+              }
+          }));
+
+        } catch (error: any) {
+          console.error("AI Error:", error);
+          alert("發生意外錯誤：\n" + error.message);
+          setAiFeedback({ title: "連線小狀況", content: "目前無法連線到 AI 助理。", });
+        } finally {
+          setIsGeneratingAI(false);
+        }
+  };
+
   const handleExportData = () => {
     const data = {
         logs,
@@ -248,108 +299,14 @@ const App: React.FC = () => {
     reader.readAsText(file);
   };
 
-  // --- Core: Toggle Complete ---
-  const toggleComplete = () => {
-    setLogs(prev => {
-        const currentData = prev[dateKey];
-        const isNowCompleted = !currentData?.completed;
-        
-        // 當完成時，如果當天還沒有專屬清單，就存一份當下的快照
-        // 這樣以後怎麼改全域，這一天都不會變
-        let snapshot = currentData?.customRoutine || currentData?.routineSnapshot;
-        if (isNowCompleted && !snapshot) {
-            snapshot = [...products];
-        }
 
-        return {
-            ...prev,
-            [dateKey]: {
-                ...prev[dateKey],
-                completed: isNowCompleted,
-                timestamp: isNowCompleted ? Date.now() : undefined,
-                note: noteInput,
-                skinConditions: skinConditionInput,
-                customRoutine: snapshot // 確保儲存專屬清單
-            }
-        };
-    });
-  };
+  // ========================================================
+  // ⚡️ 核心邏輯：產品操作分流
+  // ========================================================
 
-  const saveJournal = async () => {
-    const updatedLog = {
-      ...logs[dateKey],
-      completed: logs[dateKey]?.completed || false,
-      note: noteInput,
-      skinConditions: skinConditionInput,
-      // 確保這裡不會不小心覆蓋掉 customRoutine
-      customRoutine: logs[dateKey]?.customRoutine
-    };
-    setLogs(prev => ({ ...prev, [dateKey]: updatedLog }));
-
-    if (noteInput.trim().length > 1 || skinConditionInput.length > 0) {
-      await generateAIFeedback(noteInput, skinConditionInput);
-    }
-  };
-
-  const handleSaveMachineModes = (modes: MachineMode[]) => {
-      setLogs(prev => ({
-          ...prev,
-          [dateKey]: {
-              ...prev[dateKey],
-              completed: prev[dateKey]?.completed || false,
-              note: prev[dateKey]?.note || '',
-              machineModes: modes
-          }
-      }));
-  };
-
-  const generateAIFeedback = async (note: string, conditions: string[]) => {
-        setIsGeneratingAI(true);
-        try {
-          const workerUrl = "https://skincare.65245.workers.dev";
-          const promptText = `你是一位專業皮膚科顧問，同時也是一位溫暖、善解人意的閨蜜。
-    今日膚況標籤: ${conditions.join(', ')}
-    日記與心情備註: "${note}"
-    請回傳 JSON 格式，包含: { "title": "...", "content": "...", "actionItem": "...", "historyStory": "...", "quote": "..." }`;
-    
-          const response = await fetch(workerUrl, {
-            method: "POST",
-            headers: { "Content-Type": "application/json" },
-            body: JSON.stringify({ contents: [{ parts: [{ text: promptText }] }] }),
-          });
-          if (!response.ok) throw new Error(`Worker 連線失敗: ${response.status}`);
-          const data = await response.json();
-          const aiText = data.candidates?.[0]?.content?.parts?.[0]?.text;
-          if (!aiText) throw new Error("AI 回應為空");
-          const jsonStr = aiText.replace(/```json|```/g, "").trim();
-          const result = JSON.parse(jsonStr);
-          
-          const feedbackData = { title: result.title || "肌膚的輕聲細語", content: result.content || "暫時無法讀取建議。", ...result };
-          
-          setAiFeedback(feedbackData);
-          setLogs(prev => ({
-              ...prev,
-              [dateKey]: {
-                  ...prev[dateKey],
-                  aiResponse: feedbackData
-              }
-          }));
-
-        } catch (error: any) {
-          console.error("AI Error:", error);
-          alert("發生意外錯誤：\n" + error.message);
-          setAiFeedback({ title: "連線小狀況", content: "目前無法連線到 AI 助理。", });
-        } finally {
-          setIsGeneratingAI(false);
-        }
-  };
-
-  // --- 關鍵修改：獨立作業處理器 (Handler) ---
-  // 這些函式現在會同時處理「當天存檔」與「全域同步」
-
-  // Helper: 更新特定日期的邏輯
-  const performUpdate = (newList: Product[]) => {
-      // 1. 永遠將新清單存入「當天」的日記 (獨立作業)
+  // 1. 從「當日儀式 (Ritual)」中刪除 -> 只影響當天，不影響全域
+  const handleRemoveFromRitual = (id: string) => {
+      const newList = displayProducts.filter(p => p.id !== id);
       setLogs(prev => ({
           ...prev,
           [dateKey]: {
@@ -357,38 +314,18 @@ const App: React.FC = () => {
               customRoutine: newList
           }
       }));
-
-      // 2. 判斷是否要同步到全域 (影響未來)
-      // 如果不是過去的日子 (即今天或未來)，則更新全域
-      if (!isPastDate) {
-          setProducts(newList);
-      }
   };
 
-  const handleAddProduct = (p: Product) => {
-      // 計算新清單
-      const currentList = displayProducts; // 基於目前畫面上的清單做修改
-      const maxOrder = currentList.length > 0 ? Math.max(...currentList.map(x => x.order)) : 0;
-      const newList = [...currentList, { ...p, order: maxOrder + 1 }];
-      
-      performUpdate(newList);
+  // 2. 從「保養櫃 (Cabinet)」中刪除 -> 影響全域，但不影響過去快照
+  const handleRemoveGlobal = (id: string) => {
+      setProducts(prev => prev.filter(p => p.id !== id));
   };
 
-  const handleUpdateProduct = (updated: Product) => {
-      const newList = displayProducts.map(p => p.id === updated.id ? updated : p);
-      performUpdate(newList);
-  };
-
-  const handleRemoveProduct = (id: string) => {
-      const newList = displayProducts.filter(p => p.id !== id);
-      performUpdate(newList);
-  };
-
-  const handleReorderProduct = (id: string, direction: 'up' | 'down') => {
+  // 3. 在儀式中「排序」 -> 影響當天，若非過去則同步全域
+  const handleReorderRitual = (id: string, direction: 'up' | 'down') => {
       const list = [...displayProducts];
       const sortedList = list.sort((a, b) => a.order - b.order);
       const index = sortedList.findIndex(p => p.id === id);
-      
       if (index === -1) return;
 
       if (direction === 'up' && index > 0) {
@@ -401,58 +338,70 @@ const App: React.FC = () => {
           sortedList[index + 1].order = temp;
       }
       
-      performUpdate([...sortedList]);
+      const newList = [...sortedList];
+      setLogs(prev => ({
+          ...prev,
+          [dateKey]: { ...prev[dateKey], customRoutine: newList }
+      }));
+
+      if (!isPastDate) {
+          setProducts(newList);
+      }
   };
 
-  const handleDragDrop = (draggedId: string, targetId: string) => {
-      const list = [...displayProducts];
-      const sortedList = list.sort((a, b) => a.order - b.order);
-      const draggedIndex = sortedList.findIndex(p => p.id === draggedId);
-      const targetIndex = sortedList.findIndex(p => p.id === targetId);
-
-      if (draggedIndex === -1 || targetIndex === -1 || draggedIndex === targetIndex) return;
-
-      const [removed] = sortedList.splice(draggedIndex, 1);
-      sortedList.splice(targetIndex, 0, removed);
-      const newList = sortedList.map((p, idx) => ({ ...p, order: idx }));
-
-      performUpdate(newList);
+  // 4. 建立新產品 (Add New Global) -> 加到全域，並自動加入當天且排序
+  const handleCreateNewProduct = (p: Product) => {
+      setProducts(prev => {
+          const maxOrder = prev.length > 0 ? Math.max(...prev.map(x => x.order)) : 0;
+          return [...prev, { ...p, order: maxOrder + 1 }];
+      });
+      // 創建後直接加入當天行程，並自動排序
+      handleSelectProduct({ ...p, order: 999 });
   };
 
-  const handleAutoSort = (scope: 'MORNING' | 'EVENING') => {
-    setIsSorting(true);
-    const performLocalSort = (currentProducts: Product[]) => {
-        const scopeProducts = currentProducts.filter(p => {
-             if (scope === 'MORNING') return p.timing === 'MORNING' || p.timing === 'BOTH';
-             if (scope === 'EVENING') return p.timing === 'EVENING' || p.timing === 'BOTH';
-             return false;
-        });
-        const availableIndices = scopeProducts.map(p => p.order).sort((a, b) => a - b);
-        const sortedScopeProducts = [...scopeProducts].sort((a, b) => {
-            const wA = getOptimalProductOrder(a.productType);
-            const wB = getOptimalProductOrder(b.productType);
-            if (wA !== wB) return wA - wB;
-            return a.name.localeCompare(b.name, 'zh-TW');
-        });
-        const newOrderMap = new Map<string, number>();
-        sortedScopeProducts.forEach((p, idx) => {
-            newOrderMap.set(p.id, availableIndices[idx]);
-        });
-        return currentProducts.map(p => {
-            if (newOrderMap.has(p.id)) return { ...p, order: newOrderMap.get(p.id)! };
-            return p;
-        });
-    };
+  // 5. 選擇現有產品加入當天 (Select Existing to Today) -> ✨ 自動 Smart Sort
+  const handleSelectProduct = (p: Product) => {
+      const currentList = displayProducts;
+      if (currentList.some(exist => exist.id === p.id)) {
+          alert('這個產品已經在今天的清單囉！');
+          return;
+      }
 
-    const newList = performLocalSort(displayProducts);
-    performUpdate(newList);
-    setTimeout(() => setIsSorting(false), 300);
+      // 1. 加入清單
+      const listWithNewItem = [...currentList, { ...p, order: 999 }];
+
+      // 2. 立即執行 Smart Sort
+      const sortedList = listWithNewItem.sort((a, b) => {
+          const wA = getOptimalProductOrder(a.productType);
+          const wB = getOptimalProductOrder(b.productType);
+          if (wA !== wB) return wA - wB;
+          return a.name.localeCompare(b.name, 'zh-TW');
+      });
+
+      // 3. 重新分配 order
+      const finalList = sortedList.map((item, idx) => ({ ...item, order: idx }));
+
+      // 4. 存入 customRoutine (更新 UI)
+      setLogs(prev => ({
+          ...prev,
+          [dateKey]: {
+              ...prev[dateKey],
+              customRoutine: finalList
+          }
+      }));
+
+      setIsProductSelectorOpen(false);
   };
 
+  // UI Handlers
   const handleEditProduct = (p: Product) => {
       setEditingProduct(p);
       setIsProductManagerOpen(false);
       setIsModalOpen(true);
+  };
+
+  const handleUpdateProduct = (updated: Product) => {
+      setProducts(prev => prev.map(p => p.id === updated.id ? updated : p));
   };
 
   const handleCloseModal = () => {
@@ -460,8 +409,26 @@ const App: React.FC = () => {
       setEditingProduct(null);
   };
 
-  const handleDateChange = (date: Date) => {
-      setSelectedDate(date);
+  const handleAutoSort = (scope: 'MORNING' | 'EVENING') => {
+    setIsSorting(true);
+    const performLocalSort = (list: Product[]) => {
+        // Simple client-side sort for now
+        return list.sort((a, b) => {
+            const wA = getOptimalProductOrder(a.productType);
+            const wB = getOptimalProductOrder(b.productType);
+            if (wA !== wB) return wA - wB;
+            return a.name.localeCompare(b.name, 'zh-TW');
+        }).map((p, idx) => ({...p, order: idx}));
+    };
+
+    const newList = performLocalSort([...displayProducts]);
+    
+    setLogs(prev => ({
+        ...prev,
+        [dateKey]: { ...prev[dateKey], customRoutine: newList }
+    }));
+    
+    setTimeout(() => setIsSorting(false), 300);
   };
 
   return (
@@ -469,10 +436,7 @@ const App: React.FC = () => {
       
       {/* 1. Header */}
       <div className="fixed top-0 left-0 right-0 z-40 w-full transition-all duration-300">
-        <header
-            style={{ paddingTop: 'calc(env(safe-area-inset-top) + 1rem)' }}
-            className="px-6 pb-4 flex justify-between items-center shadow-sm border-b border-white/40 glass-panel relative z-20 bg-white/80 backdrop-blur-md"
-        >
+        <header style={{ paddingTop: 'calc(env(safe-area-inset-top) + 1rem)' }} className="px-6 pb-4 flex justify-between items-center shadow-sm border-b border-white/40 glass-panel relative z-20 bg-white/80 backdrop-blur-md">
           <div onClick={() => setIsTimelineOpen(!isTimelineOpen)} className="cursor-pointer group select-none">
             <div className="flex items-center gap-2">
                 <h1 className="text-3xl font-serif italic font-bold text-rose-900 tracking-wide text-glow">My Skin Diary</h1>
@@ -480,26 +444,14 @@ const App: React.FC = () => {
             </div>
             <p className="text-[10px] text-rose-400 font-bold tracking-[0.2em] uppercase mt-1 group-hover:text-rose-500 transition-colors">Noble Edition</p>
           </div>
-          
           <div className="flex gap-3">
-            <button onClick={() => setIsProductManagerOpen(true)} className="bg-white/50 text-rose-400 p-2.5 rounded-full hover:bg-white hover:text-rose-500 transition-all shadow-sm border border-rose-100 hover:shadow-md">
-              <Archive size={20} />
-            </button>
-            <button onClick={() => setIsCalendarOpen(true)} className="bg-white/50 text-rose-400 p-2.5 rounded-full hover:bg-white hover:text-rose-500 transition-all shadow-sm border border-rose-100 hover:shadow-md">
-              <Calendar size={20} />
-            </button>
-            <button onClick={() => setIsSettingsOpen(true)} className="bg-white/50 text-gray-400 p-2.5 rounded-full hover:bg-white hover:text-gray-600 transition-all shadow-sm border border-rose-100 hover:shadow-md">
-              <Settings size={20} />
-            </button>
+            <button onClick={() => setIsProductManagerOpen(true)} className="bg-white/50 text-rose-400 p-2.5 rounded-full hover:bg-white hover:text-rose-500 transition-all shadow-sm border border-rose-100 hover:shadow-md"><Archive size={20} /></button>
+            <button onClick={() => setIsCalendarOpen(true)} className="bg-white/50 text-rose-400 p-2.5 rounded-full hover:bg-white hover:text-rose-500 transition-all shadow-sm border border-rose-100 hover:shadow-md"><Calendar size={20} /></button>
+            <button onClick={() => setIsSettingsOpen(true)} className="bg-white/50 text-gray-400 p-2.5 rounded-full hover:bg-white hover:text-gray-600 transition-all shadow-sm border border-rose-100 hover:shadow-md"><Settings size={20} /></button>
           </div>
         </header>
-
         <div className={`overflow-hidden transition-all duration-500 ease-in-out bg-white/30 backdrop-blur-md border-b border-white/20 shadow-sm relative z-10 ${isTimelineOpen ? 'max-h-96 opacity-100 translate-y-0' : 'max-h-0 opacity-0 -translate-y-4'}`}>
-            <div className="py-1">
-                <div className="max-w-6xl mx-auto">
-                    <Timeline selectedDate={selectedDate} onSelectDate={handleDateChange} completedDates={Object.keys(logs).filter(k => logs[k].completed)} />
-                </div>
-            </div>
+            <div className="py-1"><div className="max-w-6xl mx-auto"><Timeline selectedDate={selectedDate} onSelectDate={setSelectedDate} completedDates={Object.keys(logs).filter(k => logs[k].completed)} /></div></div>
         </div>
       </div>
 
@@ -512,8 +464,6 @@ const App: React.FC = () => {
                 <h2 className="text-4xl font-serif font-medium text-gray-800 px-1 mb-4 flex items-center">{getDisplayDate(selectedDate)}</h2>
                 <div className={`flex-1 p-8 rounded-3xl shadow-lg border border-white/60 relative overflow-hidden transition-all duration-500 group ${getThemeBackgroundClass(defaultRoutine.theme)} backdrop-blur-md`}>
                     <ThemeFlowerPattern themeName={defaultRoutine.theme} />
-                    <div className="absolute top-0 right-0 w-64 h-64 bg-gradient-to-br from-white/40 to-transparent rounded-full blur-3xl -translate-y-1/2 translate-x-1/3 pointer-events-none"></div>
-                    <div className="absolute bottom-0 left-0 w-40 h-40 bg-gradient-to-tr from-white/60 to-transparent rounded-full blur-2xl translate-y-1/3 -translate-x-1/4 pointer-events-none"></div>
                     <div className="relative z-10">
                         <span className="inline-block px-4 py-1.5 rounded-full text-xs font-bold bg-white/70 backdrop-blur border border-white text-gray-500 mb-3 shadow-sm tracking-widest uppercase">Today's Theme</span>
                         <h3 className="text-3xl font-serif font-bold text-gray-800 mb-3 tracking-wide drop-shadow-sm">{defaultRoutine.theme}</h3>
@@ -536,19 +486,16 @@ const App: React.FC = () => {
             </div>
         </div>
 
-        {/* Middle Section: Routines (使用 displayProducts) */}
-        {/* 如果正在檢視已經「獨立存檔」的清單 (有 customRoutine) */}
+        {/* Lock Indicator */}
         {hasCustomRoutine && (
             <div className="mb-4 flex items-center justify-center gap-2 text-gray-500 bg-gray-50/50 p-2 rounded-lg text-xs border border-gray-100">
-                {isPastDate ? (
-                     <><History size={14} /> <span>歷史紀錄 (編輯不會影響今日)</span></>
-                ) : (
-                     <><Lock size={14} /> <span>今日專屬設定 (已與全域連動)</span></>
-                )}
+                {isPastDate ? <><History size={14} /> <span>歷史紀錄 (編輯不會影響今日)</span></> : <><Lock size={14} /> <span>今日專屬設定 (已與全域連動)</span></>}
             </div>
         )}
 
+        {/* Routines Grid */}
         <div className="grid grid-cols-1 md:grid-cols-2 gap-8 mb-12">
+            {/* Morning */}
             <section className="bg-gradient-to-br from-amber-50/80 via-white to-orange-50/50 backdrop-blur-md border border-amber-100/50 rounded-3xl p-7 flex flex-col h-full shadow-sm hover:shadow-lg transition-all duration-300">
                 <div className="flex items-center gap-3 mb-6 border-b border-amber-100 pb-4">
                     <div className="p-2 bg-amber-100 rounded-full border border-amber-200 text-amber-500 shadow-sm ring-2 ring-white"><Sun size={24} /></div>
@@ -559,15 +506,21 @@ const App: React.FC = () => {
                         products={displayProducts}
                         type="MORNING"
                         dayOfWeek={selectedDate.getDay()}
-                        onRemove={handleRemoveProduct}
-                        onReorder={handleReorderProduct}
-                        onDropItem={handleDragDrop}
-                        onAutoSort={() => handleAutoSort('MORNING')}
+                        onRemove={handleRemoveFromRitual}
+                        onReorder={handleReorderRitual}
                         isSorting={isSorting}
                     />
                 </div>
+                {/* ☀️ Morning Add Button */}
+                <button
+                    onClick={() => setIsProductSelectorOpen(true)}
+                    className="mt-6 w-full py-3.5 border border-dashed border-amber-200 rounded-2xl text-amber-500 text-sm font-bold bg-amber-50/30 hover:bg-amber-50 hover:border-amber-300 transition-all flex items-center justify-center gap-2 group"
+                >
+                    <Plus size={16} className="group-hover:scale-110 transition-transform"/> 加入保養品
+                </button>
             </section>
 
+            {/* Evening */}
             <section className="bg-gradient-to-br from-indigo-50/80 via-white to-slate-50/50 backdrop-blur-md border border-indigo-100/50 rounded-3xl p-7 flex flex-col h-full shadow-sm hover:shadow-lg transition-all duration-300">
                 <div className="flex items-center gap-3 mb-6 border-b border-indigo-100 pb-4">
                     <div className="p-2 bg-indigo-100 rounded-full border border-indigo-200 text-indigo-500 shadow-sm ring-2 ring-white"><Moon size={24} /></div>
@@ -578,21 +531,22 @@ const App: React.FC = () => {
                         products={displayProducts}
                         type="EVENING"
                         dayOfWeek={selectedDate.getDay()}
-                        onRemove={handleRemoveProduct}
-                        onReorder={handleReorderProduct}
-                        onDropItem={handleDragDrop}
-                        onAutoSort={() => handleAutoSort('EVENING')}
+                        onRemove={handleRemoveFromRitual}
+                        onReorder={handleReorderRitual}
                         isSorting={isSorting}
                     />
                 </div>
-                {/* 讓每一天都可以新增產品 (獨立存檔) */}
-                <button onClick={() => { setEditingProduct(null); setIsModalOpen(true); }} className="mt-6 w-full py-3.5 border border-dashed border-indigo-200 rounded-2xl text-indigo-400 text-sm font-bold bg-indigo-50/30 hover:bg-indigo-50 hover:border-indigo-300 hover:text-indigo-500 transition-all flex items-center justify-center gap-2 group">
-                    <Plus size={16} className="group-hover:scale-110 transition-transform"/> 加入保養步驟
+                {/* 🌙 Evening Add Button */}
+                <button
+                    onClick={() => setIsProductSelectorOpen(true)}
+                    className="mt-6 w-full py-3.5 border border-dashed border-indigo-200 rounded-2xl text-indigo-400 text-sm font-bold bg-indigo-50/30 hover:bg-indigo-50 hover:border-indigo-300 hover:text-indigo-500 transition-all flex items-center justify-center gap-2 group"
+                >
+                    <Plus size={16} className="group-hover:scale-110 transition-transform"/> 加入保養品
                 </button>
             </section>
         </div>
 
-        {/* Bottom Section: Journal */}
+        {/* Bottom Section (Journal) */}
         <section className="max-w-3xl mx-auto">
             <div className="flex justify-between items-end mb-4 px-2">
               <h3 className="font-serif font-bold text-2xl text-gray-800 flex items-center gap-3"><div className="p-1.5 bg-rose-100 rounded-lg text-rose-500"><Edit3 size={18} /></div>Skin Diary & AI Insights</h3>
@@ -609,32 +563,11 @@ const App: React.FC = () => {
                 {aiFeedback && (
                     <div className="animate-[fadeIn_0.5s_ease-out] mt-8 pt-8 border-t border-rose-100/50">
                         <div className="glass-panel rounded-3xl border border-white/60 shadow-xl overflow-hidden relative">
-                            <div className="absolute inset-0 bg-gradient-to-br from-white/40 via-transparent to-rose-50/30 pointer-events-none"></div>
-                            <div className="px-8 py-6 border-b border-rose-100/50 flex items-center gap-4 relative z-10">
-                                 <div className="bg-gradient-to-br from-rose-100 to-pink-200 p-3 rounded-2xl text-rose-600 shadow-sm ring-4 ring-rose-50"><Sparkles size={22} /></div>
-                                 <div><h4 className="font-serif text-rose-900 font-bold text-2xl tracking-wide">{aiFeedback.title || "AI 美容顧問"}</h4><p className="text-xs text-rose-400 uppercase tracking-widest font-medium mt-1">Personalized Analysis</p></div>
-                            </div>
                             <div className="p-8 space-y-8 relative z-10">
                                 <div className="relative pl-6 border-l-2 border-rose-200"><Quote size={32} className="absolute -top-4 -left-5 text-rose-200/50 fill-rose-100" /><p className="text-gray-600 text-[15px] leading-8 font-light whitespace-pre-line">{aiFeedback.content}</p></div>
-                                {(aiFeedback as any).actionItem && (
-                                    <div className="bg-gradient-to-r from-rose-50/80 to-white border border-rose-100 rounded-2xl p-5 flex items-start gap-4 shadow-sm">
-                                        <div className="mt-1 bg-rose-500 text-white text-[10px] px-2.5 py-1 rounded-md font-bold shrink-0 tracking-wider shadow-sm">ACTION</div>
-                                        <p className="text-rose-800 font-medium text-base">{(aiFeedback as any).actionItem}</p>
-                                    </div>
-                                )}
-                                {(aiFeedback as any).historyStory && (
-                                    <div className="pt-2">
-                                        <div className="bg-blue-50/60 rounded-xl p-5 border border-blue-100/50 flex items-start gap-4 text-sm text-gray-600 group hover:bg-blue-50 transition-colors">
-                                             <div className="bg-white p-2 rounded-full shadow-sm text-blue-400 group-hover:scale-110 transition-transform mt-0.5"><BookOpen size={20} /></div>
-                                             <div className="flex-1"><span className="text-[10px] font-bold text-blue-400 uppercase tracking-widest block mb-2">History & Culture</span><span className="leading-relaxed font-light text-gray-700 text-[15px]">{(aiFeedback as any).historyStory}</span></div>
-                                        </div>
-                                    </div>
-                                )}
-                                {(aiFeedback as any).quote && (
-                                    <div className="mt-6 pt-6 border-t border-rose-100/50 flex flex-col items-center justify-center text-center">
-                                        <Feather size={18} className="text-rose-300 mb-2" /><p className="font-serif italic text-gray-600 text-lg leading-relaxed">"{(aiFeedback as any).quote}"</p>
-                                    </div>
-                                )}
+                                {(aiFeedback as any).actionItem && <div className="bg-gradient-to-r from-rose-50/80 to-white border border-rose-100 rounded-2xl p-5 flex items-start gap-4 shadow-sm"><div className="mt-1 bg-rose-500 text-white text-[10px] px-2.5 py-1 rounded-md font-bold shrink-0 tracking-wider shadow-sm">ACTION</div><p className="text-rose-800 font-medium text-base">{(aiFeedback as any).actionItem}</p></div>}
+                                {(aiFeedback as any).historyStory && <div className="pt-2"><div className="bg-blue-50/60 rounded-xl p-5 border border-blue-100/50 flex items-start gap-4 text-sm text-gray-600 group hover:bg-blue-50 transition-colors"><div className="bg-white p-2 rounded-full shadow-sm text-blue-400 group-hover:scale-110 transition-transform mt-0.5"><BookOpen size={20} /></div><div className="flex-1"><span className="text-[10px] font-bold text-blue-400 uppercase tracking-widest block mb-2">History & Culture</span><span className="leading-relaxed font-light text-gray-700 text-[15px]">{(aiFeedback as any).historyStory}</span></div></div></div>}
+                                {(aiFeedback as any).quote && <div className="mt-6 pt-6 border-t border-rose-100/50 flex flex-col items-center justify-center text-center"><Feather size={18} className="text-rose-300 mb-2" /><p className="font-serif italic text-gray-600 text-lg leading-relaxed">"{(aiFeedback as any).quote}"</p></div>}
                             </div>
                         </div>
                     </div>
@@ -644,6 +577,7 @@ const App: React.FC = () => {
 
       </main>
 
+      {/* Floating Button */}
       <div className="fixed bottom-0 left-0 w-full p-4 bg-white/70 backdrop-blur-xl border-t border-white/50 z-20 shadow-[0_-10px_30px_rgba(0,0,0,0.03)]">
         <div className="max-w-md mx-auto">
             {isCompleted ? (
@@ -658,8 +592,44 @@ const App: React.FC = () => {
         </div>
       </div>
 
-      <AddProductModal isOpen={isModalOpen} onClose={handleCloseModal} onAdd={handleAddProduct} onUpdate={handleUpdateProduct} initialProduct={editingProduct} />
-      <ProductManager isOpen={isProductManagerOpen} onClose={() => setIsProductManagerOpen(false)} products={products} onRemove={handleRemoveProduct} onEdit={handleEditProduct} onOpenAddModal={() => { setEditingProduct(null); setIsProductManagerOpen(false); setIsModalOpen(true); }} />
+      {/* Modals */}
+      
+      {/* 1. Add New Product (Modal) */}
+      <AddProductModal
+        isOpen={isModalOpen}
+        onClose={handleCloseModal}
+        onAdd={handleCreateNewProduct}
+        onUpdate={handleUpdateProduct}
+        initialProduct={editingProduct}
+      />
+
+      {/* 2. My Product Cabinet (Manage Mode) */}
+      <ProductManager
+        isOpen={isProductManagerOpen}
+        onClose={() => setIsProductManagerOpen(false)}
+        products={products}
+        onRemove={handleRemoveGlobal} // ⚡️ 全域刪除
+        onEdit={handleEditProduct}
+        onOpenAddModal={() => { setEditingProduct(null); setIsProductManagerOpen(false); setIsModalOpen(true); }}
+      />
+
+      {/* 3. Product Selector (Select Mode for adding to daily) */}
+      <ProductManager
+        isOpen={isProductSelectorOpen}
+        onClose={() => setIsProductSelectorOpen(false)}
+        products={products}
+        onRemove={() => {}} // 選擇模式下停用刪除
+        onEdit={() => {}}   // 選擇模式下停用編輯
+        isSelectMode={true} // ⚡️ 開啟選擇模式 UI
+        onSelect={handleSelectProduct} // ⚡️ 點擊後加入今日並自動排序
+        onOpenAddModal={() => {
+            setEditingProduct(null);
+            setIsProductSelectorOpen(false);
+            setIsModalOpen(true);
+        }}
+      />
+
+      {/* Other Modals */}
       <MachineSelectorModal isOpen={isMachineModalOpen} onClose={() => setIsMachineModalOpen(false)} selectedDate={selectedDate} currentModes={activeMachineModes} defaultModes={defaultRoutine.machineModes} skinConditions={skinConditionInput} onSave={handleSaveMachineModes} />
       <WeeklyScheduleModal isOpen={isScheduleModalOpen} onClose={() => setIsScheduleModalOpen(false)} schedule={weeklySchedule} onSave={handleSaveSchedule} />
       <MonthCalendar isOpen={isCalendarOpen} onClose={() => setIsCalendarOpen(false)} logs={logs} selectedDate={selectedDate} onSelectDate={handleDateChange} />
