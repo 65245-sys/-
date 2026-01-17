@@ -133,12 +133,11 @@ const App: React.FC = () => {
 
   // --- Display Logic (含資料清洗防呆) ---
   const displayProducts = useMemo(() => {
-      // 🛡️ [資料清洗]：確保取出的產品資料都有 days 欄位，防止白屏
       const sanitize = (list?: Product[]) => {
           if (!list) return undefined;
           return list.map(p => ({
               ...p,
-              days: Array.isArray(p.days) ? p.days : [0, 1, 2, 3, 4, 5, 6] // 若舊資料缺 days，預設全有
+              days: Array.isArray(p.days) ? p.days : [0, 1, 2, 3, 4, 5, 6]
           }));
       };
 
@@ -175,7 +174,6 @@ const App: React.FC = () => {
       loadedProducts = [...INITIAL_PRODUCTS];
     }
 
-    // 🛡️ [全域產品清洗]：確保載入的全域產品都有 days
     loadedProducts = loadedProducts.map((p, index) => ({
         ...p,
         name: p.name || '未命名產品',
@@ -198,11 +196,14 @@ const App: React.FC = () => {
       setIsScheduleModalOpen(false);
   };
 
-  // --- Date Change: Load Data ---
+  // --- 補上這個遺失的函式 ---
+  const handleDateChange = (date: Date) => {
+      setSelectedDate(date);
+  };
+
   useEffect(() => {
     setNoteInput(logs[dateKey]?.note || '');
     setSkinConditionInput(logs[dateKey]?.skinConditions || []);
-    // [修正] 相容舊的字串格式和新的物件格式
     if (logs[dateKey]?.aiResponse) {
         setAiFeedback(logs[dateKey].aiResponse);
     } else if (typeof logs[dateKey]?.aiFeedback === 'string') {
@@ -280,10 +281,6 @@ const App: React.FC = () => {
         } catch (error: any) { console.error("AI Error:", error); alert("發生意外錯誤：\n" + error.message); setAiFeedback({ title: "連線小狀況", content: "目前無法連線到 AI 助理。", }); } finally { setIsGeneratingAI(false); }
   };
 
-  // ========================================================
-  // ⚡️ 核心邏輯：產品操作分流
-  // ========================================================
-
   const handleRemoveFromRitual = (id: string) => {
       const newList = displayProducts.filter(p => p.id !== id);
       setLogs(prev => ({ ...prev, [dateKey]: { ...prev[dateKey], customRoutine: newList } }));
@@ -347,8 +344,6 @@ const App: React.FC = () => {
 
   return (
     <div className="min-h-screen pb-24 font-sans text-gray-800 selection:bg-rose-200">
-      
-      {/* 1. Header */}
       <div className="fixed top-0 left-0 right-0 z-40 w-full transition-all duration-300">
         <header style={{ paddingTop: 'calc(env(safe-area-inset-top) + 1rem)' }} className="px-6 pb-4 flex justify-between items-center shadow-sm border-b border-white/40 glass-panel relative z-20 bg-white/80 backdrop-blur-md">
           <div onClick={() => setIsTimelineOpen(!isTimelineOpen)} className="cursor-pointer group select-none">
@@ -366,10 +361,7 @@ const App: React.FC = () => {
         </div>
       </div>
 
-      {/* 2. Main Content */}
       <main className={`max-w-6xl mx-auto px-4 sm:px-6 py-8 transition-all duration-500 ease-in-out ${isTimelineOpen ? 'pt-72' : 'pt-36'}`}>
-        
-        {/* Top Section */}
         <div className="grid grid-cols-1 md:grid-cols-12 gap-6 mb-8 items-stretch">
             <div className="md:col-span-7 lg:col-span-8 flex flex-col justify-between">
                 <h2 className="text-4xl font-serif font-medium text-gray-800 px-1 mb-4 flex items-center">{getDisplayDate(selectedDate)}</h2>
@@ -394,10 +386,8 @@ const App: React.FC = () => {
             </div>
         </div>
 
-        {/* Lock Indicator */}
         {hasCustomRoutine && (<div className="mb-4 flex items-center justify-center gap-2 text-gray-500 bg-gray-50/50 p-2 rounded-lg text-xs border border-gray-100">{isPastDate ? <><History size={14} /> <span>歷史紀錄 (編輯不會影響今日)</span></> : <><Lock size={14} /> <span>今日專屬設定 (已與全域連動)</span></>}</div>)}
 
-        {/* Routines Grid */}
         <div className="grid grid-cols-1 md:grid-cols-2 gap-8 mb-12">
             <section className="bg-gradient-to-br from-amber-50/80 via-white to-orange-50/50 backdrop-blur-md border border-amber-100/50 rounded-3xl p-7 flex flex-col h-full shadow-sm hover:shadow-lg transition-all duration-300">
                 <div className="flex items-center gap-3 mb-6 border-b border-amber-100 pb-4"><div className="p-2 bg-amber-100 rounded-full border border-amber-200 text-amber-500 shadow-sm ring-2 ring-white"><Sun size={24} /></div><div><h3 className="font-serif font-bold text-2xl text-amber-950">Morning Ritual</h3><p className="text-xs text-amber-500 uppercase tracking-widest font-medium">Awaken & Protect</p></div></div>
@@ -411,7 +401,6 @@ const App: React.FC = () => {
             </section>
         </div>
 
-        {/* Bottom Section (Journal) */}
         <section className="max-w-3xl mx-auto">
             <div className="flex justify-between items-end mb-4 px-2"><h3 className="font-serif font-bold text-2xl text-gray-800 flex items-center gap-3"><div className="p-1.5 bg-rose-100 rounded-lg text-rose-500"><Edit3 size={18} /></div>Skin Diary & AI Insights</h3></div>
             <div className="glass-panel rounded-3xl overflow-hidden p-8 mb-8 relative">
