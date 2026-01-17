@@ -1,9 +1,9 @@
 import React, { useState, useEffect, useRef } from 'react';
-// 加入 ChevronDown
-import { Calendar, Plus, CheckCircle, Undo2, ChevronLeft, ChevronRight, ChevronDown, Moon, Sun, Edit3, Save, Sparkles, Archive, Loader2, Quote, ArrowRight, Settings2, CalendarDays, BookOpen, Feather } from 'lucide-react';
-import { DailyLog, DailyLogsMap, Product, RoutineType, MachineMode, DayRoutine } from './types';
-import { getDisplayDate, formatDateKey, isSameDay } from './utils/dateUtils';
-import { getRoutineForDay, INITIAL_PRODUCTS, analyzeProductInput, getOptimalProductOrder, PRODUCT_ORDER_WEIGHTS, PRODUCT_TAGS, DEFAULT_WEEKLY_SCHEDULE, getThemeType } from './utils/routineLogic';
+// 加入 Download, Upload, Settings 圖示
+import { Calendar, Plus, CheckCircle, Undo2, ChevronDown, Moon, Sun, Edit3, Sparkles, Archive, Loader2, Quote, Settings, Download, Upload, AlertCircle, Settings2, CalendarDays, BookOpen, Feather } from 'lucide-react';
+import { DailyLog, DailyLogsMap, Product, MachineMode, DayRoutine } from './types';
+import { getDisplayDate, formatDateKey } from './utils/dateUtils';
+import { getRoutineForDay, INITIAL_PRODUCTS, analyzeProductInput, getOptimalProductOrder, DEFAULT_WEEKLY_SCHEDULE, getThemeType } from './utils/routineLogic';
 
 // Components
 import Timeline from './components/Timeline';
@@ -16,30 +16,21 @@ import SkinConditionSelector from './components/SkinConditionSelector';
 import MachineSelectorModal from './components/MachineSelectorModal';
 import WeeklyScheduleModal from './components/WeeklyScheduleModal';
 
-// Helper: Dynamic Theme Background Colors (Based on Theme String, not Day Index)
+// Helper: Dynamic Theme Background Colors
 const getThemeBackgroundClass = (themeName: string) => {
     const type = getThemeType(themeName);
-    
     switch(type) {
-        case 'PORE':
-            return 'bg-gradient-to-br from-emerald-50 via-teal-50 to-emerald-100/60';
-        case 'LIFTING':
-            return 'bg-gradient-to-br from-violet-50 via-fuchsia-50 to-purple-100/60';
-        case 'PLUMPING':
-            return 'bg-gradient-to-br from-rose-50 via-pink-50 to-rose-100/60';
-        case 'ACID':
-            return 'bg-gradient-to-br from-amber-50 via-orange-50 to-yellow-100/60';
-        case 'MOISTURE':
-            return 'bg-gradient-to-br from-sky-50 via-blue-50 to-indigo-100/60';
-        default:
-            return 'bg-gradient-to-br from-gray-50 to-slate-100';
+        case 'PORE': return 'bg-gradient-to-br from-emerald-50 via-teal-50 to-emerald-100/60';
+        case 'LIFTING': return 'bg-gradient-to-br from-violet-50 via-fuchsia-50 to-purple-100/60';
+        case 'PLUMPING': return 'bg-gradient-to-br from-rose-50 via-pink-50 to-rose-100/60';
+        case 'ACID': return 'bg-gradient-to-br from-amber-50 via-orange-50 to-yellow-100/60';
+        case 'MOISTURE': return 'bg-gradient-to-br from-sky-50 via-blue-50 to-indigo-100/60';
+        default: return 'bg-gradient-to-br from-gray-50 to-slate-100';
     }
 };
 
-// Internal Component: Theme Image Pattern
 const ThemeFlowerPattern = ({ themeName }: { themeName: string }) => {
     const type = getThemeType(themeName);
-
     const themeImages: Record<string, string> = {
         PORE: "https://i.ibb.co/GQVS5HpK/Gemini-Generated-Image-33a1lz33a1lz33a1.png",
         LIFTING: "https://i.ibb.co/ccL0sjyw/Gemini-Generated-Image-llis6tllis6tllis.png",
@@ -48,22 +39,53 @@ const ThemeFlowerPattern = ({ themeName }: { themeName: string }) => {
         MOISTURE: "https://i.ibb.co/XfWzp5WY/IMG-7336.png",
         DEFAULT: "https://i.ibb.co/XfWzp5WY/IMG-7336.png"
     };
-
-    const imageUrl = themeImages[type] || themeImages.DEFAULT;
-
     return (
-        <div
-            className="absolute right-0 top-0 bottom-0 w-3/4 md:w-2/3 pointer-events-none"
-            style={{
-                maskImage: 'linear-gradient(to left, black 0%, transparent 100%)',
-                WebkitMaskImage: 'linear-gradient(to left, black 0%, transparent 100%)'
-            }}
-        >
-            <img
-                src={imageUrl}
-                alt="Theme Background"
-                className="w-full h-full object-cover object-center opacity-50 mix-blend-multiply contrast-110"
-            />
+        <div className="absolute right-0 top-0 bottom-0 w-3/4 md:w-2/3 pointer-events-none" style={{ maskImage: 'linear-gradient(to left, black 0%, transparent 100%)', WebkitMaskImage: 'linear-gradient(to left, black 0%, transparent 100%)' }}>
+            <img src={themeImages[type] || themeImages.DEFAULT} alt="Theme Background" className="w-full h-full object-cover object-center opacity-50 mix-blend-multiply contrast-110" />
+        </div>
+    );
+};
+
+// --- 設定與備份 Modal ---
+const SettingsModal = ({ isOpen, onClose, onImport, onExport }: { isOpen: boolean; onClose: () => void; onImport: (e: React.ChangeEvent<HTMLInputElement>) => void; onExport: () => void }) => {
+    if (!isOpen) return null;
+    return (
+        <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/40 backdrop-blur-sm animate-[fadeIn_0.2s_ease-out]">
+            <div className="bg-white rounded-3xl w-full max-w-sm overflow-hidden shadow-2xl animate-[scaleIn_0.2s_ease-out]">
+                <div className="p-6 border-b border-gray-100 flex justify-between items-center">
+                    <h3 className="font-serif font-bold text-xl text-gray-800 flex items-center gap-2">
+                        <Settings className="text-gray-400" size={20} /> 設定與備份
+                    </h3>
+                    <button onClick={onClose} className="text-gray-400 hover:text-gray-600">✕</button>
+                </div>
+                <div className="p-6 space-y-4">
+                    <div className="bg-blue-50 p-4 rounded-xl text-sm text-blue-700 flex gap-3 items-start">
+                        <AlertCircle size={20} className="shrink-0 mt-0.5" />
+                        <p>資料目前僅儲存在此手機中。建議定期備份，以免清除瀏覽紀錄後資料遺失。</p>
+                    </div>
+
+                    <button onClick={onExport} className="w-full flex items-center justify-between p-4 bg-gray-50 hover:bg-gray-100 rounded-xl transition-colors group">
+                        <div className="flex items-center gap-3">
+                            <div className="bg-white p-2 rounded-full shadow-sm text-emerald-500"><Download size={20} /></div>
+                            <div className="text-left">
+                                <span className="block font-bold text-gray-700">匯出備份 (Export)</span>
+                                <span className="text-xs text-gray-500">下載資料檔到手機</span>
+                            </div>
+                        </div>
+                    </button>
+
+                    <label className="w-full flex items-center justify-between p-4 bg-gray-50 hover:bg-gray-100 rounded-xl transition-colors cursor-pointer group">
+                        <div className="flex items-center gap-3">
+                            <div className="bg-white p-2 rounded-full shadow-sm text-amber-500"><Upload size={20} /></div>
+                            <div className="text-left">
+                                <span className="block font-bold text-gray-700">匯入還原 (Import)</span>
+                                <span className="text-xs text-gray-500">選擇之前的備份檔 (.json)</span>
+                            </div>
+                        </div>
+                        <input type="file" accept=".json" onChange={onImport} className="hidden" />
+                    </label>
+                </div>
+            </div>
         </div>
     );
 };
@@ -73,21 +95,18 @@ const App: React.FC = () => {
   const [selectedDate, setSelectedDate] = useState<Date>(new Date());
   const [logs, setLogs] = useState<DailyLogsMap>({});
   const [products, setProducts] = useState<Product[]>([]);
-  
   const [weeklySchedule, setWeeklySchedule] = useState<Record<number, DayRoutine>>(DEFAULT_WEEKLY_SCHEDULE);
   const isLoaded = useRef(false);
   
   // UI State
   const [isModalOpen, setIsModalOpen] = useState(false);
   const [editingProduct, setEditingProduct] = useState<Product | null>(null);
-  
-  // Timeline State (Default Open)
   const [isTimelineOpen, setIsTimelineOpen] = useState(true);
-    
   const [isCalendarOpen, setIsCalendarOpen] = useState(false);
   const [isProductManagerOpen, setIsProductManagerOpen] = useState(false);
   const [isMachineModalOpen, setIsMachineModalOpen] = useState(false);
   const [isScheduleModalOpen, setIsScheduleModalOpen] = useState(false);
+  const [isSettingsOpen, setIsSettingsOpen] = useState(false);
   
   // Input States
   const [noteInput, setNoteInput] = useState('');
@@ -100,7 +119,6 @@ const App: React.FC = () => {
   const dateKey = formatDateKey(selectedDate);
   const currentLog = logs[dateKey];
   const isCompleted = !!currentLog?.completed;
-  
   const defaultRoutine = getRoutineForDay(selectedDate, weeklySchedule);
   const activeMachineModes = currentLog?.machineModes || defaultRoutine.machineModes;
 
@@ -110,19 +128,15 @@ const App: React.FC = () => {
     if (savedLogs) setLogs(JSON.parse(savedLogs));
 
     const savedSchedule = localStorage.getItem('skin_weekly_schedule');
-    if (savedSchedule) {
-        setWeeklySchedule(JSON.parse(savedSchedule));
-    }
+    if (savedSchedule) setWeeklySchedule(JSON.parse(savedSchedule));
 
     const savedUnifiedProducts = localStorage.getItem('skin_products_unified');
     let loadedProducts: Product[] = [];
-    
     if (savedUnifiedProducts) {
       loadedProducts = JSON.parse(savedUnifiedProducts);
     } else {
       loadedProducts = [...INITIAL_PRODUCTS];
     }
-
     loadedProducts = loadedProducts.map((p, index) => ({
         ...p,
         name: p.name || '未命名產品',
@@ -130,7 +144,6 @@ const App: React.FC = () => {
         productType: p.productType || analyzeProductInput(p.name || '未命名產品').productType,
         order: typeof p.order === 'number' ? p.order : index
     }));
-
     setProducts(loadedProducts);
     isLoaded.current = true;
   }, []);
@@ -141,9 +154,7 @@ const App: React.FC = () => {
   }, [logs]);
 
   useEffect(() => {
-    if (isLoaded.current) {
-        localStorage.setItem('skin_products_unified', JSON.stringify(products));
-    }
+    if (isLoaded.current) localStorage.setItem('skin_products_unified', JSON.stringify(products));
   }, [products]);
 
   const handleSaveSchedule = (newSchedule: Record<number, DayRoutine>) => {
@@ -158,6 +169,61 @@ const App: React.FC = () => {
   }, [dateKey, logs]);
 
   // Handlers
+  const handleExportData = () => {
+    const data = {
+        logs,
+        products,
+        schedule: weeklySchedule,
+        exportDate: new Date().toISOString()
+    };
+    const blob = new Blob([JSON.stringify(data, null, 2)], { type: 'application/json' });
+    const url = URL.createObjectURL(blob);
+    const a = document.createElement('a');
+    a.href = url;
+    a.download = `my-skin-diary-backup-${new Date().toISOString().split('T')[0]}.json`;
+    document.body.appendChild(a);
+    a.click();
+    document.body.removeChild(a);
+    URL.revokeObjectURL(url);
+  };
+
+  const handleImportData = (e: React.ChangeEvent<HTMLInputElement>) => {
+    const file = e.target.files?.[0];
+    if (!file) return;
+
+    if (!confirm('確定要匯入此備份嗎？目前的資料將會被覆蓋！')) {
+        e.target.value = '';
+        return;
+    }
+
+    const reader = new FileReader();
+    reader.onload = (event) => {
+        try {
+            const json = JSON.parse(event.target?.result as string);
+            
+            if (json.logs) {
+                setLogs(json.logs);
+                localStorage.setItem('skin_logs', JSON.stringify(json.logs));
+            }
+            if (json.products) {
+                setProducts(json.products);
+                localStorage.setItem('skin_products_unified', JSON.stringify(json.products));
+            }
+            if (json.schedule) {
+                setWeeklySchedule(json.schedule);
+                localStorage.setItem('skin_weekly_schedule', JSON.stringify(json.schedule));
+            }
+
+            alert('資料還原成功！網頁將重新整理。');
+            window.location.reload();
+        } catch (error) {
+            console.error(error);
+            alert('匯入失敗：檔案格式錯誤。');
+        }
+    };
+    reader.readAsText(file);
+  };
+
   const toggleComplete = () => {
     setLogs(prev => ({
       ...prev,
@@ -178,11 +244,7 @@ const App: React.FC = () => {
       note: noteInput,
       skinConditions: skinConditionInput
     };
-
-    setLogs(prev => ({
-      ...prev,
-      [dateKey]: updatedLog
-    }));
+    setLogs(prev => ({ ...prev, [dateKey]: updatedLog }));
 
     if (noteInput.trim().length > 1 || skinConditionInput.length > 0) {
       await generateAIFeedback(noteInput, skinConditionInput);
@@ -205,55 +267,39 @@ const App: React.FC = () => {
         setIsGeneratingAI(true);
         try {
           const workerUrl = "https://skincare.65245.workers.dev";
-          const promptText = `你是一位專業皮膚科顧問。
-    今日膚況: ${conditions.length > 0 ? conditions.join(', ') : '未標註'}
-    日記備註: "${note}"
+          // [AI Prompt 更新]：加入心情分析指令
+          const promptText = `你是一位專業皮膚科顧問，同時也是一位溫暖、善解人意的閨蜜。
+    
+    【使用者輸入】
+    今日膚況標籤: ${conditions.join(', ')}
+    日記與心情備註: "${note}"
 
-    請回傳 JSON 格式，包含以下欄位：
+    【任務目標】
+    請回傳一個 JSON 物件，必須包含以下欄位：
     {
-      "title": "一句優雅的標題",
-      "content": "200字以內的保養建議",
-      "actionItem": "一個具體的行動建議 (例如：今晚多敷一片保濕面膜)",
-      "historyStory": "一個與美容保養相關的歷史趣聞或文化小故事 (100字以內)",
-      "quote": "一句與美麗或自我照顧相關的優雅名言"
+      "title": "一句優雅且溫暖的標題 (例如：給疲憊的妳一點溫柔)",
+      "content": "請撰寫一段約 200 字的綜合建議。內容必須包含：1. 針對「膚況」的專業保養建議。 2. 針對「心情備註」的溫暖回應（如果是負面情緒請給予安慰，正面情緒則一起慶祝）。讓使用者感覺到被關心，身心靈都被照顧。",
+      "actionItem": "一個具體的行動建議 (保養或放鬆皆可，例如：點個香氛蠟燭敷面膜)",
+      "historyStory": "一個與美容、歷史或心理療癒相關的優雅小故事 (100字以內)",
+      "quote": "一句能治癒人心、與美麗或自我成長相關的名言"
     }`;
-
+    
           const response = await fetch(workerUrl, {
             method: "POST",
             headers: { "Content-Type": "application/json" },
-            body: JSON.stringify({
-              contents: [{ parts: [{ text: promptText }] }]
-            }),
+            body: JSON.stringify({ contents: [{ parts: [{ text: promptText }] }] }),
           });
-
           if (!response.ok) throw new Error(`Worker 連線失敗: ${response.status}`);
           const data = await response.json();
-
-          if (data.error) {
-            alert(`Google 拒絕請求！\n錯誤代碼: ${data.error.code}\n錯誤訊息: ${data.error.message}`);
-            setIsGeneratingAI(false);
-            return;
-          }
-
           const aiText = data.candidates?.[0]?.content?.parts?.[0]?.text;
           if (!aiText) throw new Error("AI 回應為空");
-
           const jsonStr = aiText.replace(/```json|```/g, "").trim();
           const result = JSON.parse(jsonStr);
-
-          setAiFeedback({
-            title: result.title || "肌膚的輕聲細語",
-            content: result.content || "暫時無法讀取建議。",
-            ...result
-          });
-
+          setAiFeedback({ title: result.title || "肌膚的輕聲細語", content: result.content || "暫時無法讀取建議。", ...result });
         } catch (error: any) {
           console.error("AI Error:", error);
           alert("發生意外錯誤：\n" + error.message);
-          setAiFeedback({
-            title: "連線小狀況",
-            content: "目前無法連線到 AI 助理。",
-          });
+          setAiFeedback({ title: "連線小狀況", content: "目前無法連線到 AI 助理。", });
         } finally {
           setIsGeneratingAI(false);
         }
@@ -279,7 +325,6 @@ const App: React.FC = () => {
           const list = [...prev].sort((a, b) => a.order - b.order);
           const index = list.findIndex(p => p.id === id);
           if (index === -1) return prev;
-
           if (direction === 'up' && index > 0) {
               const temp = list[index].order;
               list[index].order = list[index - 1].order;
@@ -298,7 +343,6 @@ const App: React.FC = () => {
           const list = [...prev].sort((a, b) => a.order - b.order);
           const draggedIndex = list.findIndex(p => p.id === draggedId);
           const targetIndex = list.findIndex(p => p.id === targetId);
-
           if (draggedIndex === -1 || targetIndex === -1 || draggedIndex === targetIndex) return prev;
           const [removed] = list.splice(draggedIndex, 1);
           list.splice(targetIndex, 0, removed);
@@ -314,7 +358,6 @@ const App: React.FC = () => {
              if (scope === 'EVENING') return p.timing === 'EVENING' || p.timing === 'BOTH';
              return false;
         });
-
         const availableIndices = scopeProducts.map(p => p.order).sort((a, b) => a - b);
         const sortedScopeProducts = [...scopeProducts].sort((a, b) => {
             const wA = getOptimalProductOrder(a.productType);
@@ -322,20 +365,15 @@ const App: React.FC = () => {
             if (wA !== wB) return wA - wB;
             return a.name.localeCompare(b.name, 'zh-TW');
         });
-
         const newOrderMap = new Map<string, number>();
         sortedScopeProducts.forEach((p, idx) => {
             newOrderMap.set(p.id, availableIndices[idx]);
         });
-
         return currentProducts.map(p => {
-            if (newOrderMap.has(p.id)) {
-                return { ...p, order: newOrderMap.get(p.id)! };
-            }
+            if (newOrderMap.has(p.id)) return { ...p, order: newOrderMap.get(p.id)! };
             return p;
         });
     };
-
     setProducts(prev => performLocalSort(prev));
     setTimeout(() => setIsSorting(false), 300);
   };
@@ -363,7 +401,6 @@ const App: React.FC = () => {
         
         {/* Top Bar (Always Visible) */}
         <header
-            // [FIXED] Dynamic Island/Notch Safe Area Padding
             style={{ paddingTop: 'calc(env(safe-area-inset-top) + 1rem)' }}
             className="px-6 pb-4 flex justify-between items-center shadow-sm border-b border-white/40 glass-panel relative z-20 bg-white/80 backdrop-blur-md"
         >
@@ -375,7 +412,6 @@ const App: React.FC = () => {
           >
             <div className="flex items-center gap-2">
                 <h1 className="text-3xl font-serif italic font-bold text-rose-900 tracking-wide text-glow">My Skin Diary</h1>
-                {/* Toggle Icon */}
                 <ChevronDown
                     className={`text-rose-400 transition-transform duration-300 ${isTimelineOpen ? 'rotate-180' : ''}`}
                     size={20}
@@ -399,6 +435,14 @@ const App: React.FC = () => {
             >
               <Calendar size={20} />
             </button>
+            {/* 設定按鈕 */}
+            <button
+              onClick={() => setIsSettingsOpen(true)}
+              className="bg-white/50 text-gray-400 p-2.5 rounded-full hover:bg-white hover:text-gray-600 transition-all shadow-sm border border-rose-100 hover:shadow-md"
+              aria-label="設定與備份"
+            >
+              <Settings size={20} />
+            </button>
           </div>
         </header>
 
@@ -421,7 +465,6 @@ const App: React.FC = () => {
 
       {/* 2. Main Content (Dynamic Top Padding) */}
       <main
-        // [FIXED] Increased padding to accommodate taller header with safe area
         className={`max-w-6xl mx-auto px-4 sm:px-6 py-8 transition-all duration-500 ease-in-out
         ${isTimelineOpen ? 'pt-72' : 'pt-36'}`}
       >
@@ -573,10 +616,11 @@ const App: React.FC = () => {
                     onChange={setSkinConditionInput}
                 />
 
+                {/* [修改] 提示文字更新，引導心情書寫 */}
                 <textarea
                     value={noteInput}
                     onChange={(e) => setNoteInput(e.target.value)}
-                    placeholder="紀錄更多細節，例如：昨晚使用 A 醇後的肌膚反應..."
+                    placeholder="親愛的，今天過得如何？紀錄一下肌膚狀況，或是寫下任何想說的心情，我都在這裡聽..."
                     className="w-full h-32 p-5 bg-white/60 backdrop-blur-sm rounded-2xl focus:ring-2 focus:ring-rose-200 focus:outline-none resize-none text-base text-gray-700 leading-relaxed appearance-none border border-rose-100 mb-6 transition-all placeholder:text-gray-400 shadow-inner"
                 />
                 
@@ -587,7 +631,7 @@ const App: React.FC = () => {
                         className="flex items-center gap-2 px-8 py-3.5 bg-gradient-to-r from-rose-400 to-rose-500 text-white font-bold rounded-2xl shadow-lg shadow-rose-200 hover:shadow-rose-300 hover:-translate-y-0.5 disabled:opacity-50 disabled:cursor-not-allowed transition-all active:scale-95 disabled:active:scale-100 disabled:hover:translate-y-0"
                     >
                         {isGeneratingAI ? (
-                            <><Loader2 size={18} className="animate-spin"/> 正在諮詢 AI 顧問...</>
+                            <><Loader2 size={18} className="animate-spin"/> 正在諮詢美容閨蜜...</>
                         ) : (
                             <><Sparkles size={18} /> {currentLog ? '更新日記並分析' : '儲存日記並分析'}</>
                         )}
@@ -727,6 +771,14 @@ const App: React.FC = () => {
         logs={logs}
         selectedDate={selectedDate}
         onSelectDate={handleDateChange}
+      />
+
+      {/* 設定與備份 Modal */}
+      <SettingsModal
+        isOpen={isSettingsOpen}
+        onClose={() => setIsSettingsOpen(false)}
+        onImport={handleImportData}
+        onExport={handleExportData}
       />
 
     </div>
