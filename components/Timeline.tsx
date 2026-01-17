@@ -1,6 +1,6 @@
-import React, { useRef, useLayoutEffect, useMemo } from 'react';
+import React, { useRef, useEffect, useMemo } from 'react';
 
-// --- 1. 本地定義日期工具 (移除 date-fns 依賴，解決部署錯誤) ---
+// --- 1. 本地定義日期工具 (移除 date-fns 依賴，確保部署成功) ---
 const getLocalYMD = (date: Date) => {
   const y = date.getFullYear();
   const m = String(date.getMonth() + 1).padStart(2, '0');
@@ -43,7 +43,6 @@ const Timeline: React.FC<Props> = ({ selectedDate, onSelectDate, completedDates 
   const scrollContainerRef = useRef<HTMLDivElement>(null);
   
   // 2. 產生日期範圍：前後 180 天 (模擬無限捲動)
-  // 使用 useMemo 避免每次 render 都重新計算，提升效能
   const dates = useMemo(() => {
     const today = getStartOfToday();
     const range = 180;
@@ -58,24 +57,27 @@ const Timeline: React.FC<Props> = ({ selectedDate, onSelectDate, completedDates 
 
   const today = useMemo(() => getStartOfToday(), []);
 
-  // 3. 自動捲動邏輯 (置中)
-  useLayoutEffect(() => {
-    if (scrollContainerRef.current) {
-      // 找到 "data-active=true" 的元素
-      const activeElement = scrollContainerRef.current.querySelector('[data-active="true"]') as HTMLElement;
-      
-      if (activeElement) {
-        const container = scrollContainerRef.current;
-        // 計算置中位置：(元素左邊界 - 容器一半寬度) + (元素一半寬度)
-        const scrollLeft = activeElement.offsetLeft - container.offsetWidth / 2 + activeElement.offsetWidth / 2;
+  // 3. 自動捲動邏輯 (修正版：加入延遲以確保 iOS 置中生效)
+  useEffect(() => {
+    // 加入 100ms 延遲，等待 iOS Safari 畫面渲染完成
+    const timer = setTimeout(() => {
+      if (scrollContainerRef.current) {
+        // 找到目前 active 的日期元素
+        const activeElement = scrollContainerRef.current.querySelector('[data-active="true"]');
         
-        container.scrollTo({
-          left: scrollLeft,
-          behavior: 'smooth'
-        });
+        if (activeElement) {
+          // 使用 scrollIntoView 自動置中，比手動算座標更精準且相容
+          activeElement.scrollIntoView({
+            behavior: 'smooth',
+            block: 'nearest',   // 垂直不亂動
+            inline: 'center'    // 水平置中 (關鍵)
+          });
+        }
       }
-    }
-  }, []); // 僅在元件掛載時執行一次
+    }, 100);
+
+    return () => clearTimeout(timer);
+  }, []); // 空陣列表示只在剛開啟時執行一次
 
   return (
     <div className="w-full relative my-2">
