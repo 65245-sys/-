@@ -1,6 +1,37 @@
-import React, { useRef, useLayoutEffect } from 'react';
-import { format, addDays, startOfToday, isSameDay, subDays } from 'date-fns';
-import { zhTW } from 'date-fns/locale';
+import React, { useRef, useLayoutEffect, useMemo } from 'react';
+
+// --- 1. 本地定義日期工具 (移除 date-fns 依賴，解決部署錯誤) ---
+const getLocalYMD = (date: Date) => {
+  const y = date.getFullYear();
+  const m = String(date.getMonth() + 1).padStart(2, '0');
+  const d = String(date.getDate()).padStart(2, '0');
+  return `${y}-${m}-${d}`;
+};
+
+const isSameDate = (d1: Date, d2: Date) => {
+  return d1.getFullYear() === d2.getFullYear() &&
+         d1.getMonth() === d2.getMonth() &&
+         d1.getDate() === d2.getDate();
+};
+
+const getStartOfToday = () => {
+  const now = new Date();
+  return new Date(now.getFullYear(), now.getMonth(), now.getDate());
+};
+
+const addDays = (date: Date, days: number) => {
+  const result = new Date(date);
+  result.setDate(result.getDate() + days);
+  return result;
+};
+
+// 格式化顯示 (中文)
+const formatMonth = (date: Date) => `${date.getMonth() + 1}月`;
+const formatWeekday = (date: Date) => {
+  const days = ['週日', '週一', '週二', '週三', '週四', '週五', '週六'];
+  return days[date.getDay()];
+};
+// -------------------------------------------------------------
 
 interface Props {
   selectedDate: Date;
@@ -11,52 +42,59 @@ interface Props {
 const Timeline: React.FC<Props> = ({ selectedDate, onSelectDate, completedDates }) => {
   const scrollContainerRef = useRef<HTMLDivElement>(null);
   
-  // 1. 大幅擴充日期範圍：產生前後各 180 天 (共約 360 天)
-  // 這樣使用者感覺就像可以「無限」左右滑動，但不會有載入延遲
-  const today = startOfToday();
-  const range = 180; // 前後範圍
-  const dates = Array.from({ length: range * 2 + 1 }, (_, i) => addDays(subDays(today, range), i));
+  // 2. 產生日期範圍：前後 180 天 (模擬無限捲動)
+  // 使用 useMemo 避免每次 render 都重新計算，提升效能
+  const dates = useMemo(() => {
+    const today = getStartOfToday();
+    const range = 180;
+    const result: Date[] = [];
+    
+    // 從 -180 天 到 +180 天
+    for (let i = -range; i <= range; i++) {
+      result.push(addDays(today, i));
+    }
+    return result;
+  }, []);
 
-  // 2. 自動捲動邏輯
+  const today = useMemo(() => getStartOfToday(), []);
+
+  // 3. 自動捲動邏輯 (置中)
   useLayoutEffect(() => {
     if (scrollContainerRef.current) {
-      // 找到目前選中的日期 (或是今天)
+      // 找到 "data-active=true" 的元素
       const activeElement = scrollContainerRef.current.querySelector('[data-active="true"]') as HTMLElement;
       
       if (activeElement) {
         const container = scrollContainerRef.current;
-        // 計算置中位置：讓選中的項目出現在畫面正中央
+        // 計算置中位置：(元素左邊界 - 容器一半寬度) + (元素一半寬度)
         const scrollLeft = activeElement.offsetLeft - container.offsetWidth / 2 + activeElement.offsetWidth / 2;
         
         container.scrollTo({
           left: scrollLeft,
-          behavior: 'smooth' // 平滑捲動
+          behavior: 'smooth'
         });
       }
     }
-  }, []); // 只在初始化時執行一次
+  }, []); // 僅在元件掛載時執行一次
 
   return (
     <div className="w-full relative my-2">
-      {/* 移除左右遮罩與過大的 Padding，讓視覺延伸到邊緣 */}
-      
       <div
         ref={scrollContainerRef}
         className="flex overflow-x-auto no-scrollbar gap-3 px-5 py-4 scroll-smooth snap-x snap-mandatory"
         style={{
-          // 讓 iOS 慣性滑動更流暢
-          WebkitOverflowScrolling: 'touch',
+          WebkitOverflowScrolling: 'touch', // iOS 順暢滑動
         }}
       >
         {dates.map((date) => {
-          const isSelected = isSameDay(date, selectedDate);
-          const isToday = isSameDay(date, today);
-          const dateKey = format(date, 'yyyy-MM-dd');
+          const isSelected = isSameDate(date, selectedDate);
+          const isDateToday = isSameDate(date, today);
+          const dateKey = getLocalYMD(date);
           const isCompleted = completedDates.includes(dateKey);
 
           return (
             <div
-              key={date.toISOString()}
+              key={date.getTime()} // 使用時間戳記當 key
               data-active={isSelected ? "true" : "false"}
               onClick={() => onSelectDate(date)}
               className={`
@@ -70,26 +108,26 @@ const Timeline: React.FC<Props> = ({ selectedDate, onSelectDate, completedDates 
             >
               {/* 顯示月份 */}
               <span className={`text-[10px] font-medium mb-0.5 leading-tight ${isSelected ? 'text-rose-100' : 'text-gray-400'}`}>
-                 {format(date, 'M月', { locale: zhTW })}
+                 {formatMonth(date)}
               </span>
 
               {/* 顯示星期 */}
               <span className={`text-[11px] font-bold tracking-wider mb-0.5 ${isSelected ? 'text-white' : 'text-gray-400'}`}>
-                {format(date, 'EE', { locale: zhTW })}
+                {formatWeekday(date)}
               </span>
               
               {/* 顯示日期 */}
               <span className={`text-2xl font-serif font-bold leading-none ${isSelected ? 'text-white' : 'text-gray-600'}`}>
-                {format(date, 'd')}
+                {date.getDate()}
               </span>
 
-              {/* 完成標記 (小圓點) */}
+              {/* 完成標記 (小綠點) */}
               {isCompleted && !isSelected && (
                 <div className="absolute -top-1 -right-1 w-3 h-3 bg-emerald-400 rounded-full border-2 border-white shadow-sm"></div>
               )}
               
               {/* 今日標記 */}
-              {isToday && !isSelected && (
+              {isDateToday && !isSelected && (
                  <span className="absolute bottom-1.5 text-[9px] font-bold text-rose-400">Today</span>
               )}
             </div>
