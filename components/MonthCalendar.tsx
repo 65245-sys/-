@@ -1,7 +1,20 @@
-import React, { useState } from 'react';
+import React, { useState, useMemo } from 'react';
 import { X, ChevronLeft, ChevronRight, Check } from 'lucide-react';
-import { getMonthGrid, isSameDay, formatDateKey } from '../utils/dateUtils';
 import { DailyLogsMap } from '../types';
+
+// --- 純 JS 日期工具 (本地定義) ---
+const getDaysInMonth = (year: number, month: number) => new Date(year, month + 1, 0).getDate();
+const getFirstDayOfMonth = (year: number, month: number) => new Date(year, month, 1).getDay();
+
+const formatDateKey = (year: number, month: number, day: number) => {
+    const m = String(month + 1).padStart(2, '0');
+    const d = String(day).padStart(2, '0');
+    return `${year}-${m}-${d}`;
+};
+
+const MONTH_NAMES = ['1月', '2月', '3月', '4月', '5月', '6月', '7月', '8月', '9月', '10月', '11月', '12月'];
+const WEEK_DAYS = ['日', '一', '二', '三', '四', '五', '六'];
+// ------------------------------------
 
 interface Props {
   isOpen: boolean;
@@ -12,25 +25,41 @@ interface Props {
 }
 
 const MonthCalendar: React.FC<Props> = ({ isOpen, onClose, logs, selectedDate, onSelectDate }) => {
+  // 記錄目前檢視的年份與月份
   const [viewDate, setViewDate] = useState(new Date(selectedDate));
 
   if (!isOpen) return null;
 
   const year = viewDate.getFullYear();
-  const month = viewDate.getMonth();
-  const days = getMonthGrid(year, month);
+  const month = viewDate.getMonth(); // 0-11
 
-  const prevMonth = () => {
-    setViewDate(new Date(year, month - 1, 1));
-  };
+  // 切換月份
+  const handlePrevMonth = () => setViewDate(new Date(year, month - 1, 1));
+  const handleNextMonth = () => setViewDate(new Date(year, month + 1, 1));
 
-  const nextMonth = () => {
-    setViewDate(new Date(year, month + 1, 1));
-  };
+  // 產生月曆格子
+  const calendarDays = useMemo(() => {
+      const daysInMonth = getDaysInMonth(year, month);
+      const firstDayOfWeek = getFirstDayOfMonth(year, month); // 0(Sun) - 6(Sat)
+      
+      const days = [];
+      
+      // 補前面的空白
+      for (let i = 0; i < firstDayOfWeek; i++) {
+          days.push(null);
+      }
+      
+      // 填入日期
+      for (let i = 1; i <= daysInMonth; i++) {
+          days.push(new Date(year, month, i));
+      }
+      
+      return days;
+  }, [year, month]);
 
-  const handleSelect = (date: Date) => {
-    onSelectDate(date);
-    onClose();
+  const handleDayClick = (date: Date) => {
+      onSelectDate(date);
+      onClose();
   };
 
   return (
@@ -38,84 +67,80 @@ const MonthCalendar: React.FC<Props> = ({ isOpen, onClose, logs, selectedDate, o
       <div className="bg-white rounded-3xl shadow-2xl w-full max-w-sm overflow-hidden animate-[scaleUp_0.2s_ease-out]">
         
         {/* Header */}
-        <div className="p-5 flex justify-between items-center bg-gradient-to-r from-rose-50/50 to-white border-b border-rose-50">
-          <button onClick={prevMonth} className="p-2 hover:bg-white hover:shadow-sm rounded-full text-gray-400 transition-all">
-            <ChevronLeft size={20} />
-          </button>
-          <h3 className="text-lg font-bold text-gray-800 font-serif tracking-wide">
-            {year} <span className="text-rose-400">.</span> {month + 1}
-          </h3>
-          <button onClick={nextMonth} className="p-2 hover:bg-white hover:shadow-sm rounded-full text-gray-400 transition-all">
-            <ChevronRight size={20} />
-          </button>
-          <button onClick={onClose} className="absolute right-4 top-5 text-gray-300 hover:text-gray-500">
-            <X size={20} />
-          </button>
+        <div className="p-6 border-b border-gray-100 flex justify-between items-center bg-white">
+            <h3 className="text-xl font-serif font-bold text-rose-900">
+                {year}年 {MONTH_NAMES[month]}
+            </h3>
+            <div className="flex gap-2">
+                <button onClick={handlePrevMonth} className="p-1.5 hover:bg-gray-100 rounded-full text-gray-400 hover:text-rose-500 transition-colors">
+                    <ChevronLeft size={20} />
+                </button>
+                <button onClick={handleNextMonth} className="p-1.5 hover:bg-gray-100 rounded-full text-gray-400 hover:text-rose-500 transition-colors">
+                    <ChevronRight size={20} />
+                </button>
+                <button onClick={onClose} className="p-1.5 hover:bg-gray-100 rounded-full text-gray-400 hover:text-gray-600 transition-colors ml-2">
+                    <X size={20} />
+                </button>
+            </div>
         </div>
 
-        {/* Weekday Headers */}
-        <div className="grid grid-cols-7 gap-1 px-4 pt-4 pb-2 text-center">
-          {['一', '二', '三', '四', '五', '六', '日'].map(d => (
-            <span key={d} className="text-xs text-gray-400 font-bold">{d}</span>
-          ))}
+        {/* Body */}
+        <div className="p-6">
+            {/* Weekday Headers */}
+            <div className="grid grid-cols-7 mb-4 text-center">
+                {WEEK_DAYS.map((day, idx) => (
+                    <div key={day} className={`text-xs font-bold ${idx === 0 || idx === 6 ? 'text-rose-400' : 'text-gray-400'}`}>
+                        {day}
+                    </div>
+                ))}
+            </div>
+
+            {/* Days Grid */}
+            <div className="grid grid-cols-7 gap-y-4 gap-x-2">
+                {calendarDays.map((date, index) => {
+                    if (!date) return <div key={`empty-${index}`} />;
+
+                    const dateStr = formatDateKey(date.getFullYear(), date.getMonth(), date.getDate());
+                    const isToday = new Date().toDateString() === date.toDateString();
+                    const isSelected = selectedDate.toDateString() === date.toDateString();
+                    const isCompleted = logs[dateStr]?.completed;
+
+                    return (
+                        <button
+                            key={dateStr}
+                            onClick={() => handleDayClick(date)}
+                            className={`
+                                relative h-10 rounded-xl flex flex-col items-center justify-center text-sm font-medium transition-all
+                                ${isSelected 
+                                    ? 'bg-rose-500 text-white shadow-md shadow-rose-200 scale-110 z-10' 
+                                    : 'text-gray-700 hover:bg-gray-50'}
+                                ${isToday && !isSelected ? 'text-rose-500 font-bold' : ''}
+                            `}
+                        >
+                            <span>{date.getDate()}</span>
+                            
+                            {/* Dots Indicators */}
+                            <div className="flex gap-0.5 mt-0.5 h-1.5">
+                                {isCompleted && (
+                                    <div className={`w-1 h-1 rounded-full ${isSelected ? 'bg-white' : 'bg-emerald-400'}`} />
+                                )}
+                                {isToday && !isSelected && !isCompleted && (
+                                    <div className="w-1 h-1 rounded-full bg-rose-400" />
+                                )}
+                            </div>
+                        </button>
+                    );
+                })}
+            </div>
         </div>
-
-        {/* Days Grid */}
-        <div className="grid grid-cols-7 gap-2 px-4 pb-6">
-          {days.map((date, idx) => {
-            if (!date) return <div key={idx} />;
-            
-            const dateStr = formatDateKey(date);
-            const isCompleted = logs[dateStr]?.completed;
-            const isSelected = isSameDay(date, selectedDate);
-            const isToday = isSameDay(date, new Date());
-
-            return (
-              <button
-                key={dateStr}
-                onClick={() => handleSelect(date)}
-                className={`
-                  relative h-10 w-full rounded-full flex items-center justify-center text-sm font-medium transition-all duration-300
-                  ${isSelected 
-                    ? 'bg-rose-500 text-white shadow-lg shadow-rose-200 scale-105 z-10' 
-                    : 'text-gray-700 hover:bg-rose-50'}
-                  
-                  ${/* Distinct Style for Today when not selected */''}
-                  ${!isSelected && isToday ? 'ring-2 ring-rose-400 bg-rose-50 text-rose-600 font-bold' : ''}
-                `}
-              >
-                {date.getDate()}
-                
-                {/* Completed Indicator - Larger, brighter dot */}
-                {isCompleted && (
-                  <div className={`
-                    absolute bottom-1 w-1.5 h-1.5 rounded-full shadow-sm
-                    ${isSelected ? 'bg-white' : 'bg-green-500 ring-1 ring-white'}
-                  `} />
-                )}
-
-                {/* Today Indicator - Small top-right accent if needed, but ring is main indicator */}
-                {isToday && !isSelected && (
-                   <span className="absolute -top-0.5 -right-0.5 flex h-2.5 w-2.5">
-                      <span className="animate-ping absolute inline-flex h-full w-full rounded-full bg-rose-400 opacity-75"></span>
-                      <span className="relative inline-flex rounded-full h-2.5 w-2.5 bg-rose-500 border-2 border-white"></span>
-                    </span>
-                )}
-              </button>
-            );
-          })}
-        </div>
-
-        {/* Legend */}
-        <div className="px-6 py-4 bg-gray-50/50 border-t border-gray-100 text-xs text-gray-500 flex justify-between font-medium">
-           <div className="flex items-center gap-2">
-             <div className="w-2 h-2 rounded-full bg-green-500 ring-1 ring-white shadow-sm"/> 
-             已完成保養
-           </div>
-           <div className="flex items-center gap-2">
-             <div className="w-2 h-2 rounded-full bg-rose-500 border border-rose-200"/> 
-             今日
-           </div>
+        
+        <div className="p-4 bg-gray-50 border-t border-gray-100 text-center">
+            <button
+                onClick={() => { onSelectDate(new Date()); onClose(); }}
+                className="text-sm font-bold text-rose-500 hover:text-rose-600 transition-colors"
+            >
+                回到今天
+            </button>
         </div>
 
       </div>

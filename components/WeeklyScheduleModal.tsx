@@ -1,198 +1,127 @@
 import React, { useState, useEffect } from 'react';
-import { X, Zap, Calendar, Save, RotateCcw, ChevronDown } from 'lucide-react';
-import { DayRoutine } from '../types';
-import { ALL_MACHINE_MODES, getDayLabel, DEFAULT_WEEKLY_SCHEDULE, THEME_PRESETS } from '../utils/routineLogic';
+import { X, Save, Sun, Moon, Info } from 'lucide-react';
+import { DayRoutine, MachineMode } from '../types';
+import { ALL_MACHINE_MODES, THEME_PRESETS, getThemeType } from '../utils/routineLogic';
 
 interface Props {
   isOpen: boolean;
   onClose: () => void;
   schedule: Record<number, DayRoutine>;
-  onSave: (newSchedule: Record<number, DayRoutine>) => void;
+  onSave: (schedule: Record<number, DayRoutine>) => void;
 }
+
+const WEEK_DAYS = [
+    { id: 1, label: '週一', short: 'Mon' },
+    { id: 2, label: '週二', short: 'Tue' },
+    { id: 3, label: '週三', short: 'Wed' },
+    { id: 4, label: '週四', short: 'Thu' },
+    { id: 5, label: '週五', short: 'Fri' },
+    { id: 6, label: '週六', short: 'Sat' },
+    { id: 0, label: '週日', short: 'Sun' },
+];
 
 const WeeklyScheduleModal: React.FC<Props> = ({ isOpen, onClose, schedule, onSave }) => {
   const [localSchedule, setLocalSchedule] = useState<Record<number, DayRoutine>>(schedule);
-  const [activeDay, setActiveDay] = useState<number>(1); // Start with Mon
+  const [activeDay, setActiveDay] = useState<number>(1); // Default Monday
 
   useEffect(() => {
-    if (isOpen) {
-      setLocalSchedule(JSON.parse(JSON.stringify(schedule)));
-    }
+      if (isOpen) {
+          setLocalSchedule(JSON.parse(JSON.stringify(schedule)));
+      }
   }, [isOpen, schedule]);
+
+  const handleThemeChange = (day: number, themeLabel: string) => {
+      const preset = THEME_PRESETS.find(p => p.label === themeLabel);
+      if (!preset) return;
+
+      setLocalSchedule(prev => ({
+          ...prev,
+          [day]: {
+              ...prev[day],
+              theme: preset.theme,
+              description: preset.description,
+              machineModes: preset.defaultModes
+                  .map(mid => ALL_MACHINE_MODES.find(m => m.id === mid))
+                  .filter((m): m is MachineMode => !!m),
+              isRestDay: preset.defaultModes.length === 0
+          }
+      }));
+  };
+
+  const handleSave = () => {
+      onSave(localSchedule);
+      onClose();
+  };
 
   if (!isOpen) return null;
 
-  const handleUpdateDay = (field: keyof DayRoutine, value: any) => {
-    setLocalSchedule(prev => ({
-      ...prev,
-      [activeDay]: {
-        ...prev[activeDay],
-        [field]: value
-      }
-    }));
-  };
-
-  const toggleModeForActiveDay = (modeId: string) => {
-    const currentModes = localSchedule[activeDay].machineModes;
-    const exists = currentModes.find(m => m.id === modeId);
-    
-    let newModes;
-    if (exists) {
-      newModes = currentModes.filter(m => m.id !== modeId);
-    } else {
-      const modeToAdd = ALL_MACHINE_MODES.find(m => m.id === modeId);
-      if (modeToAdd) {
-        newModes = [...currentModes, modeToAdd];
-      } else {
-        newModes = currentModes;
-      }
-    }
-
-    handleUpdateDay('machineModes', newModes);
-    // If modes exist, it's not a rest day automatically (unless user wants it to be)
-    if (newModes.length > 0) {
-        handleUpdateDay('isRestDay', false);
-    }
-  };
-
-  const handleResetDefault = () => {
-    setLocalSchedule(JSON.parse(JSON.stringify(DEFAULT_WEEKLY_SCHEDULE)));
-    alert("已載入系統預設值！\n請記得點擊右下角「儲存設定」以套用變更。");
-  };
-
-  const handleThemeChange = (e: React.ChangeEvent<HTMLSelectElement>) => {
-      const selectedLabel = e.target.value;
-      const preset = THEME_PRESETS.find(p => p.label === selectedLabel);
-
-      if (preset) {
-          handleUpdateDay('theme', preset.theme);
-          handleUpdateDay('description', preset.description);
-          
-          // Optional: Auto-select default modes if it's not 'Custom'
-          if (!selectedLabel.includes('Custom')) {
-            const newModes = ALL_MACHINE_MODES.filter(m => preset.defaultModes.includes(m.id));
-            handleUpdateDay('machineModes', newModes);
-            handleUpdateDay('isRestDay', newModes.length === 0);
-          }
-      }
-  };
-
-  const currentDayData = localSchedule[activeDay];
-  if (!currentDayData) return null;
-
-  // Find matching preset for the dropdown value
-  const currentPreset = THEME_PRESETS.find(p => p.theme === currentDayData.theme) || 
-                        THEME_PRESETS.find(p => p.label.includes('Custom'));
+  const currentRoutine = localSchedule[activeDay];
 
   return (
     <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-rose-950/20 backdrop-blur-sm animate-[fadeIn_0.2s_ease-out]">
-      <div className="bg-white rounded-3xl shadow-2xl w-full max-w-lg overflow-hidden animate-[scaleUp_0.2s_ease-out] flex flex-col max-h-[90vh]">
+      <div className="bg-white rounded-3xl shadow-2xl w-full max-w-2xl h-[85vh] flex flex-col overflow-hidden animate-[scaleUp_0.2s_ease-out]">
         
         {/* Header */}
-        <div className="p-5 bg-gradient-to-r from-rose-50 to-white border-b border-rose-100 flex justify-between items-center shrink-0">
-          <div className="flex items-center gap-3">
-            <div className="bg-rose-100 p-2 rounded-lg text-rose-500">
-               <Calendar size={20} />
-            </div>
+        <div className="p-6 border-b border-gray-100 flex justify-between items-center bg-white shrink-0">
             <div>
-               <h3 className="text-lg font-bold text-gray-800">編輯每週療程安排</h3>
-               <p className="text-xs text-rose-400">設定固定的一週保養行程</p>
+                <h3 className="text-xl font-serif font-bold text-gray-800">每週護膚排程</h3>
+                <p className="text-xs text-gray-400 mt-1">設定每一天的保養主題與儀器模式</p>
             </div>
-          </div>
-          <button onClick={onClose} className="text-gray-400 hover:text-gray-600">
-            <X size={24} />
-          </button>
+            <button onClick={onClose} className="p-2 hover:bg-gray-50 rounded-full text-gray-400 hover:text-gray-600 transition-colors">
+                <X size={24} />
+            </button>
         </div>
 
-        {/* Content */}
-        <div className="flex-1 overflow-hidden flex flex-col md:flex-row">
-            
+        <div className="flex flex-1 overflow-hidden">
             {/* Sidebar: Days */}
-            <div className="w-full md:w-24 bg-gray-50 flex md:flex-col overflow-x-auto md:overflow-y-auto shrink-0 border-b md:border-b-0 md:border-r border-gray-100 p-2 gap-2">
-                {[1, 2, 3, 4, 5, 6, 0].map(dayIdx => (
+            <div className="w-24 bg-gray-50 border-r border-gray-100 flex flex-col overflow-y-auto">
+                {WEEK_DAYS.map((day) => (
                     <button
-                        key={dayIdx}
-                        type="button"
-                        onClick={() => setActiveDay(dayIdx)}
+                        key={day.id}
+                        onClick={() => setActiveDay(day.id)}
                         className={`
-                            flex-1 md:flex-none p-3 rounded-xl text-center text-sm font-bold transition-all
-                            ${activeDay === dayIdx 
-                                ? 'bg-white text-rose-500 shadow-md ring-1 ring-rose-100' 
-                                : 'text-gray-400 hover:bg-gray-100 hover:text-gray-600'}
+                            p-4 text-center border-b border-gray-100 transition-all
+                            ${activeDay === day.id 
+                                ? 'bg-white border-l-4 border-l-rose-500 text-rose-600 font-bold shadow-sm' 
+                                : 'text-gray-400 hover:bg-gray-100 hover:text-gray-600 border-l-4 border-l-transparent'}
                         `}
                     >
-                        週{getDayLabel(dayIdx)}
+                        <span className="block text-xs uppercase tracking-wider opacity-70">{day.short}</span>
+                        <span className="block text-sm">{day.label}</span>
                     </button>
                 ))}
             </div>
 
-            {/* Editor Area */}
-            <div className="flex-1 overflow-y-auto p-6 bg-white">
+            {/* Content: Settings */}
+            <div className="flex-1 p-6 overflow-y-auto">
                 
-                {/* 1. Theme Selection (Dropdown) */}
-                <div className="mb-5 relative">
-                    <label className="block text-xs font-bold text-gray-500 uppercase tracking-wider mb-2">選擇今日主題 (Theme)</label>
-                    <div className="relative">
-                        <select 
-                            value={currentPreset?.label || ''}
-                            onChange={handleThemeChange}
-                            className="w-full p-3 pr-10 bg-gray-50 border border-gray-100 rounded-xl font-bold text-gray-800 appearance-none focus:outline-none focus:border-rose-300 focus:ring-2 focus:ring-rose-50"
-                        >
-                            {THEME_PRESETS.map((preset) => (
-                                <option key={preset.label} value={preset.label}>
-                                    {preset.label}
-                                </option>
-                            ))}
-                        </select>
-                        <ChevronDown size={18} className="absolute right-3 top-1/2 -translate-y-1/2 text-gray-400 pointer-events-none" />
-                    </div>
-                </div>
-
-                {/* 2. Description Input (Auto-filled but editable) */}
                 <div className="mb-6">
-                    <label className="block text-xs font-bold text-gray-500 uppercase tracking-wider mb-2">描述與備註 (Description)</label>
-                    <textarea 
-                        value={currentDayData.description}
-                        onChange={(e) => handleUpdateDay('description', e.target.value)}
-                        className="w-full p-3 bg-gray-50 border border-gray-100 rounded-xl text-sm text-gray-600 h-24 resize-none focus:outline-none focus:border-rose-300 focus:ring-2 focus:ring-rose-50 leading-relaxed"
-                        placeholder="選擇主題後會自動填入，也可自行修改..."
-                    />
-                </div>
-
-                {/* 3. Rest Day Toggle */}
-                <div className="mb-6 flex items-center justify-between p-3 bg-gray-50 rounded-xl border border-gray-100">
-                    <span className="text-sm font-bold text-gray-700">是否為肌膚休息日？</span>
-                    <button 
-                        type="button"
-                        onClick={() => handleUpdateDay('isRestDay', !currentDayData.isRestDay)}
-                        className={`relative inline-flex h-6 w-11 items-center rounded-full transition-colors ${currentDayData.isRestDay ? 'bg-green-400' : 'bg-gray-300'}`}
-                    >
-                        <span className={`inline-block h-4 w-4 transform rounded-full bg-white transition-transform ${currentDayData.isRestDay ? 'translate-x-6' : 'translate-x-1'}`} />
-                    </button>
-                </div>
-
-                {/* 4. Machine Modes */}
-                <div className="mb-4">
-                    <label className="block text-xs font-bold text-gray-500 uppercase tracking-wider mb-3 flex items-center gap-1">
-                        <Zap size={14} /> 美容儀模式設定
-                    </label>
-                    <div className="space-y-2">
-                        {ALL_MACHINE_MODES.map(mode => {
-                            const isSelected = currentDayData.machineModes.some(m => m.id === mode.id);
+                    <label className="block text-sm font-bold text-gray-700 mb-3">選擇保養主題</label>
+                    <div className="grid gap-3">
+                        {THEME_PRESETS.map((preset) => {
+                            const isSelected = currentRoutine?.theme === preset.theme;
                             return (
                                 <button
-                                    key={mode.id}
-                                    type="button"
-                                    onClick={() => toggleModeForActiveDay(mode.id)}
+                                    key={preset.label}
+                                    onClick={() => handleThemeChange(activeDay, preset.label)}
                                     className={`
-                                        w-full flex items-center p-3 rounded-xl border transition-all text-left
-                                        ${isSelected ? 'bg-rose-50 border-rose-300 shadow-sm' : 'bg-white border-gray-100 opacity-70 hover:opacity-100'}
+                                        p-4 rounded-xl border text-left transition-all flex items-center justify-between group
+                                        ${isSelected 
+                                            ? 'border-rose-300 bg-rose-50 shadow-sm ring-1 ring-rose-200' 
+                                            : 'border-gray-200 hover:border-rose-200 hover:bg-white'}
                                     `}
                                 >
-                                    <div className={`w-4 h-4 rounded-full mr-3 ${mode.color} ${isSelected ? 'opacity-100' : 'opacity-30'}`} />
-                                    <span className={`text-sm font-bold ${isSelected ? 'text-gray-900' : 'text-gray-500'}`}>{mode.name}</span>
+                                    <div>
+                                        <span className={`font-bold block ${isSelected ? 'text-rose-700' : 'text-gray-700'}`}>
+                                            {preset.label}
+                                        </span>
+                                        <span className={`text-xs block mt-1 ${isSelected ? 'text-rose-500' : 'text-gray-400'}`}>
+                                            {preset.description}
+                                        </span>
+                                    </div>
+                                    {isSelected && <div className="text-rose-500"><CheckIcon /></div>}
                                 </button>
-                            )
+                            );
                         })}
                     </div>
                 </div>
@@ -201,27 +130,24 @@ const WeeklyScheduleModal: React.FC<Props> = ({ isOpen, onClose, schedule, onSav
         </div>
 
         {/* Footer */}
-        <div className="p-5 border-t border-gray-100 bg-gray-50 flex gap-3">
-             <button 
-                type="button"
-                onClick={handleResetDefault}
-                className="px-4 py-3 bg-white border border-gray-200 text-gray-500 rounded-xl font-bold text-sm hover:bg-gray-100 transition-colors flex items-center gap-2"
-                title="重置為系統預設"
-             >
-                <RotateCcw size={18} /> 重置預設
-             </button>
-             <button 
-                type="button"
-                onClick={() => onSave(localSchedule)}
-                className="flex-1 py-3 bg-rose-500 text-white rounded-xl font-bold text-sm shadow-lg hover:bg-rose-600 transition-all flex items-center justify-center gap-2"
-             >
-                <Save size={18} /> 儲存設定
-             </button>
+        <div className="p-4 border-t border-gray-100 bg-gray-50 flex justify-end shrink-0">
+            <button
+                onClick={handleSave}
+                className="px-8 py-3 bg-rose-500 text-white rounded-xl font-bold shadow-lg shadow-rose-200 hover:bg-rose-600 active:scale-95 transition-all flex items-center gap-2"
+            >
+                <Save size={18} /> 儲存排程
+            </button>
         </div>
 
       </div>
     </div>
   );
 };
+
+const CheckIcon = () => (
+    <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="3" strokeLinecap="round" strokeLinejoin="round">
+        <polyline points="20 6 9 17 4 12"></polyline>
+    </svg>
+);
 
 export default WeeklyScheduleModal;
