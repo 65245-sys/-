@@ -1,6 +1,7 @@
 import React, { useRef, useEffect, useMemo } from 'react';
+import { Check } from 'lucide-react';
 
-// --- 純 JS 日期工具 (移除所有外部依賴) ---
+// --- 純 JS 日期工具 (直接內建，移除所有外部依賴，確保穩定) ---
 const getLocalYMD = (date: Date) => {
   const y = date.getFullYear();
   const m = String(date.getMonth() + 1).padStart(2, '0');
@@ -25,6 +26,7 @@ const addDays = (date: Date, days: number) => {
   return result;
 };
 
+// 格式化顯示 (中文)
 const formatMonth = (date: Date) => `${date.getMonth() + 1}月`;
 const formatWeekday = (date: Date) => {
   const days = ['週日', '週一', '週二', '週三', '週四', '週五', '週六'];
@@ -41,10 +43,11 @@ interface Props {
 const Timeline: React.FC<Props> = ({ selectedDate, onSelectDate, completedDates }) => {
   const scrollContainerRef = useRef<HTMLDivElement>(null);
   
-  // 產生日期範圍：前後 180 天 (模擬無限捲動)
+  // 1. 產生日期範圍：前後 180 天 (模擬無限捲動)
+  // 使用 useMemo 避免每次 render 都重新計算，提升效能
   const dates = useMemo(() => {
     const today = getStartOfToday();
-    const range = 180;
+    const range = 180; 
     const result: Date[] = [];
     
     // 從 -180 天 到 +180 天
@@ -56,34 +59,37 @@ const Timeline: React.FC<Props> = ({ selectedDate, onSelectDate, completedDates 
 
   const today = useMemo(() => getStartOfToday(), []);
 
-  // 自動捲動邏輯 (修正版：加入延遲以確保 iOS 置中生效)
+  // 2. 自動捲動邏輯 (置中)
+  // 使用 setTimeout 確保在 iOS 上等待渲染完成後再捲動
   useEffect(() => {
-    // 加入 100ms 延遲，等待 iOS Safari 畫面渲染完成
     const timer = setTimeout(() => {
       if (scrollContainerRef.current) {
-        // 找到目前 active 的日期元素
+        // 找到目前被選中的那個 DOM 元素 (透過 data-active 屬性)
         const activeElement = scrollContainerRef.current.querySelector('[data-active="true"]');
         
         if (activeElement) {
-          // 使用 scrollIntoView 自動置中，比手動算座標更精準且相容
           activeElement.scrollIntoView({
             behavior: 'smooth',
-            block: 'nearest',   // 垂直不亂動
-            inline: 'center'    // 水平置中 (關鍵)
+            block: 'nearest',
+            inline: 'center' // 關鍵：水平置中
           });
         }
       }
     }, 100);
 
     return () => clearTimeout(timer);
-  }, []); // 空陣列表示只在剛開啟時執行一次
+  }, []); // 僅在元件掛載時執行一次
 
   return (
     <div className="w-full relative my-2">
-      <div
+      {/* 左右遮罩 (選用) */}
+      <div className="absolute left-0 top-0 bottom-0 w-4 bg-gradient-to-r from-white/80 to-transparent z-10 pointer-events-none" />
+      <div className="absolute right-0 top-0 bottom-0 w-4 bg-gradient-to-l from-white/80 to-transparent z-10 pointer-events-none" />
+
+      <div 
         ref={scrollContainerRef}
         className="flex overflow-x-auto no-scrollbar gap-3 px-5 py-4 scroll-smooth snap-x snap-mandatory"
-        style={{
+        style={{ 
           WebkitOverflowScrolling: 'touch', // iOS 順暢滑動
         }}
       >
@@ -124,7 +130,9 @@ const Timeline: React.FC<Props> = ({ selectedDate, onSelectDate, completedDates 
 
               {/* 完成標記 (小綠點) */}
               {isCompleted && !isSelected && (
-                <div className="absolute -top-1 -right-1 w-3 h-3 bg-emerald-400 rounded-full border-2 border-white shadow-sm"></div>
+                <div className="absolute -top-1 -right-1 w-5 h-5 bg-emerald-400 rounded-full border-2 border-white shadow-sm flex items-center justify-center">
+                    <Check size={12} className="text-white" strokeWidth={3} />
+                </div>
               )}
               
               {/* 今日標記 */}
