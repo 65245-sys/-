@@ -1,5 +1,6 @@
 import React, { useState, useEffect, useRef } from 'react';
-import { Calendar, Plus, CheckCircle, Undo2, ChevronLeft, ChevronRight, Moon, Sun, Edit3, Save, Sparkles, Archive, Loader2, Quote, ArrowRight, Settings2, CalendarDays, BookOpen, Feather } from 'lucide-react';
+// 加入 ChevronDown
+import { Calendar, Plus, CheckCircle, Undo2, ChevronLeft, ChevronRight, ChevronDown, Moon, Sun, Edit3, Save, Sparkles, Archive, Loader2, Quote, ArrowRight, Settings2, CalendarDays, BookOpen, Feather } from 'lucide-react';
 import { DailyLog, DailyLogsMap, Product, RoutineType, MachineMode, DayRoutine } from './types';
 import { getDisplayDate, formatDateKey, isSameDay } from './utils/dateUtils';
 import { getRoutineForDay, INITIAL_PRODUCTS, analyzeProductInput, getOptimalProductOrder, PRODUCT_ORDER_WEIGHTS, PRODUCT_TAGS, DEFAULT_WEEKLY_SCHEDULE, getThemeType } from './utils/routineLogic';
@@ -35,11 +36,10 @@ const getThemeBackgroundClass = (themeName: string) => {
     }
 };
 
-// Internal Component: Theme Image Pattern (Replaces Lines) - Based on Theme String
+// Internal Component: Theme Image Pattern
 const ThemeFlowerPattern = ({ themeName }: { themeName: string }) => {
     const type = getThemeType(themeName);
 
-    // [圖片欄位設定] - 使用者指定的圖片
     const themeImages: Record<string, string> = {
         PORE: "https://i.ibb.co/GQVS5HpK/Gemini-Generated-Image-33a1lz33a1lz33a1.png",
         LIFTING: "https://i.ibb.co/ccL0sjyw/Gemini-Generated-Image-llis6tllis6tllis.png",
@@ -55,7 +55,6 @@ const ThemeFlowerPattern = ({ themeName }: { themeName: string }) => {
         <div
             className="absolute right-0 top-0 bottom-0 w-3/4 md:w-2/3 pointer-events-none"
             style={{
-                // Standard CSS mask-image for fading effect (Left to Right: Transparent -> Opaque)
                 maskImage: 'linear-gradient(to left, black 0%, transparent 100%)',
                 WebkitMaskImage: 'linear-gradient(to left, black 0%, transparent 100%)'
             }}
@@ -63,8 +62,6 @@ const ThemeFlowerPattern = ({ themeName }: { themeName: string }) => {
             <img
                 src={imageUrl}
                 alt="Theme Background"
-                // mix-blend-multiply: 讓白色背景變透明，融入卡片底色
-                // opacity-50: 稍微調低透明度，呈現浮水印質感
                 className="w-full h-full object-cover object-center opacity-50 mix-blend-multiply contrast-110"
             />
         </div>
@@ -75,18 +72,18 @@ const App: React.FC = () => {
   // State
   const [selectedDate, setSelectedDate] = useState<Date>(new Date());
   const [logs, setLogs] = useState<DailyLogsMap>({});
-  // Unified Product State: This is the ONLY source of truth for products
   const [products, setProducts] = useState<Product[]>([]);
   
-  // Weekly Schedule State
   const [weeklySchedule, setWeeklySchedule] = useState<Record<number, DayRoutine>>(DEFAULT_WEEKLY_SCHEDULE);
-
-  const isLoaded = useRef(false); // Ref to track if data has been loaded from LS
+  const isLoaded = useRef(false);
   
   // UI State
   const [isModalOpen, setIsModalOpen] = useState(false);
   const [editingProduct, setEditingProduct] = useState<Product | null>(null);
   
+  // Timeline State (Default Open)
+  const [isTimelineOpen, setIsTimelineOpen] = useState(true);
+    
   const [isCalendarOpen, setIsCalendarOpen] = useState(false);
   const [isProductManagerOpen, setIsProductManagerOpen] = useState(false);
   const [isMachineModalOpen, setIsMachineModalOpen] = useState(false);
@@ -104,7 +101,6 @@ const App: React.FC = () => {
   const currentLog = logs[dateKey];
   const isCompleted = !!currentLog?.completed;
   
-  // Machine Routine Logic (Priority: Log > Custom Schedule > Default)
   const defaultRoutine = getRoutineForDay(selectedDate, weeklySchedule);
   const activeMachineModes = currentLog?.machineModes || defaultRoutine.machineModes;
 
@@ -113,13 +109,11 @@ const App: React.FC = () => {
     const savedLogs = localStorage.getItem('skin_logs');
     if (savedLogs) setLogs(JSON.parse(savedLogs));
 
-    // Load Schedule
     const savedSchedule = localStorage.getItem('skin_weekly_schedule');
     if (savedSchedule) {
         setWeeklySchedule(JSON.parse(savedSchedule));
     }
 
-    // Migration & Load Logic for Products
     const savedUnifiedProducts = localStorage.getItem('skin_products_unified');
     let loadedProducts: Product[] = [];
     
@@ -129,11 +123,9 @@ const App: React.FC = () => {
       loadedProducts = [...INITIAL_PRODUCTS];
     }
 
-    // Ensure types and orders exist (Migration safeguard)
     loadedProducts = loadedProducts.map((p, index) => ({
         ...p,
-        name: p.name || '未命名產品', // Safeguard against undefined name
-        // Remove legacy POST_BOOSTER if it exists in old data
+        name: p.name || '未命名產品',
         timing: ((p.timing as string) === 'POST_BOOSTER' ? 'EVENING' : p.timing) as any,
         productType: p.productType || analyzeProductInput(p.name || '未命名產品').productType,
         order: typeof p.order === 'number' ? p.order : index
@@ -154,14 +146,12 @@ const App: React.FC = () => {
     }
   }, [products]);
 
-  // Save Schedule
   const handleSaveSchedule = (newSchedule: Record<number, DayRoutine>) => {
       setWeeklySchedule(newSchedule);
       localStorage.setItem('skin_weekly_schedule', JSON.stringify(newSchedule));
       setIsScheduleModalOpen(false);
   };
 
-  // Sync inputs when date changes
   useEffect(() => {
     setNoteInput(logs[dateKey]?.note || '');
     setSkinConditionInput(logs[dateKey]?.skinConditions || []);
@@ -194,7 +184,6 @@ const App: React.FC = () => {
       [dateKey]: updatedLog
     }));
 
-    // Trigger AI if there's data to analyze
     if (noteInput.trim().length > 1 || skinConditionInput.length > 0) {
       await generateAIFeedback(noteInput, skinConditionInput);
     }
@@ -204,20 +193,18 @@ const App: React.FC = () => {
       setLogs(prev => ({
           ...prev,
           [dateKey]: {
-              ...prev[dateKey], // preserve other log data
+              ...prev[dateKey],
               completed: prev[dateKey]?.completed || false,
               note: prev[dateKey]?.note || '',
               machineModes: modes
           }
       }));
   };
-    const generateAIFeedback = async (note: string, conditions: string[]) => {
+
+  const generateAIFeedback = async (note: string, conditions: string[]) => {
         setIsGeneratingAI(true);
         try {
-          // 1. 設定 Cloudflare Worker 網址
           const workerUrl = "https://skincare.65245.workers.dev";
-
-          // 2. 準備提示詞
           const promptText = `你是一位專業皮膚科顧問。
     今日膚況: ${conditions.length > 0 ? conditions.join(', ') : '未標註'}
     日記備註: "${note}"
@@ -231,7 +218,6 @@ const App: React.FC = () => {
       "quote": "一句與美麗或自我照顧相關的優雅名言"
     }`;
 
-          // 3. 發送請求
           const response = await fetch(workerUrl, {
             method: "POST",
             headers: { "Content-Type": "application/json" },
@@ -240,11 +226,7 @@ const App: React.FC = () => {
             }),
           });
 
-          // 4. 檢查 Cloudflare 是否連線成功
-          if (!response.ok) {
-            throw new Error(`Worker 連線失敗: ${response.status}`);
-          }
-
+          if (!response.ok) throw new Error(`Worker 連線失敗: ${response.status}`);
           const data = await response.json();
 
           if (data.error) {
@@ -254,26 +236,20 @@ const App: React.FC = () => {
           }
 
           const aiText = data.candidates?.[0]?.content?.parts?.[0]?.text;
-          
-          if (!aiText) {
-            alert("Google 有回應，但內容是空的！\n完整回應：" + JSON.stringify(data));
-            throw new Error("AI 回應為空");
-          }
+          if (!aiText) throw new Error("AI 回應為空");
 
           const jsonStr = aiText.replace(/```json|```/g, "").trim();
           const result = JSON.parse(jsonStr);
 
-          // 儲存所有欄位到 aiFeedback 狀態中
           setAiFeedback({
             title: result.title || "肌膚的輕聲細語",
             content: result.content || "暫時無法讀取建議。",
-            ...result // 把 actionItem, historyStory, quote 也存進去
+            ...result
           });
 
         } catch (error: any) {
           console.error("AI Error:", error);
           alert("發生意外錯誤：\n" + error.message);
-          
           setAiFeedback({
             title: "連線小狀況",
             content: "目前無法連線到 AI 助理。",
@@ -281,10 +257,10 @@ const App: React.FC = () => {
         } finally {
           setIsGeneratingAI(false);
         }
-      };
+  };
+
   const addProduct = (p: Product) => {
     setProducts(prev => {
-        // Assign new product to the end of the list
         const maxOrder = prev.length > 0 ? Math.max(...prev.map(x => x.order)) : 0;
         return [...prev, { ...p, order: maxOrder + 1 }];
     });
@@ -324,55 +300,34 @@ const App: React.FC = () => {
           const targetIndex = list.findIndex(p => p.id === targetId);
 
           if (draggedIndex === -1 || targetIndex === -1 || draggedIndex === targetIndex) return prev;
-
-          // Remove dragged item
           const [removed] = list.splice(draggedIndex, 1);
-          // Insert at new position
           list.splice(targetIndex, 0, removed);
-
-          // Re-assign orders
           return list.map((p, idx) => ({ ...p, order: idx }));
       });
   };
 
-  // Local Rules Sort (Scoped & Isolated)
-  // This ensures that sorting "Morning" does not affect the relative order of pure "Evening" items
   const handleAutoSort = (scope: 'MORNING' | 'EVENING') => {
     setIsSorting(true);
-
     const performLocalSort = (currentProducts: Product[]) => {
-        // 1. Identify products that belong to this scope
-        // We include 'BOTH' because they need to be sorted within this routine,
-        // but this logic preserves the "slots" used by these items so it doesn't
-        // arbitrarily push pure-other-scope items around.
         const scopeProducts = currentProducts.filter(p => {
              if (scope === 'MORNING') return p.timing === 'MORNING' || p.timing === 'BOTH';
              if (scope === 'EVENING') return p.timing === 'EVENING' || p.timing === 'BOTH';
              return false;
         });
 
-        // 2. Capture the set of "order" indices currently used by these products.
-        // We will recycle these indices. This is the key to isolation.
-        // It ensures we don't steal index '5' if it belongs to a product purely in the other routine.
         const availableIndices = scopeProducts.map(p => p.order).sort((a, b) => a - b);
-
-        // 3. Sort the scope products based on the business logic (Type Weight -> Name)
         const sortedScopeProducts = [...scopeProducts].sort((a, b) => {
             const wA = getOptimalProductOrder(a.productType);
             const wB = getOptimalProductOrder(b.productType);
-            // Sort by type weight first
             if (wA !== wB) return wA - wB;
-            // Then by name for stability within same type (using TW locale)
             return a.name.localeCompare(b.name, 'zh-TW');
         });
 
-        // 4. Map the sorted products to the recycled indices
         const newOrderMap = new Map<string, number>();
         sortedScopeProducts.forEach((p, idx) => {
             newOrderMap.set(p.id, availableIndices[idx]);
         });
 
-        // 5. Apply updates to the full product list
         return currentProducts.map(p => {
             if (newOrderMap.has(p.id)) {
                 return { ...p, order: newOrderMap.get(p.id)! };
@@ -387,13 +342,13 @@ const App: React.FC = () => {
 
   const handleEditProduct = (p: Product) => {
       setEditingProduct(p);
-      setIsProductManagerOpen(false); // Close manager
-      setIsModalOpen(true); // Open modal
+      setIsProductManagerOpen(false);
+      setIsModalOpen(true);
   };
 
   const handleCloseModal = () => {
       setIsModalOpen(false);
-      setEditingProduct(null); // Clear editing state
+      setEditingProduct(null);
   };
 
   const handleDateChange = (date: Date) => {
@@ -403,14 +358,28 @@ const App: React.FC = () => {
   return (
     <div className="min-h-screen pb-24 font-sans text-gray-800 selection:bg-rose-200">
       
-      {/* Combined Sticky Header Wrapper */}
-      <div className="sticky top-0 z-40">
-        {/* Header - Glassmorphic */}
-        <header className="px-6 py-4 flex justify-between items-center shadow-sm border-b border-white/40 glass-panel relative z-20">
-          <div>
-            <h1 className="text-3xl font-serif italic font-bold text-rose-900 tracking-wide text-glow">My Skin Diary</h1>
-            <p className="text-[10px] text-rose-400 font-bold tracking-[0.2em] uppercase mt-1">Noble Edition</p>
+      {/* 1. Header (FIXED + COLLAPSIBLE) */}
+      <div className="fixed top-0 left-0 right-0 z-40 w-full transition-all duration-300">
+        
+        {/* Top Bar (Always Visible) */}
+        <header className="px-6 py-4 flex justify-between items-center shadow-sm border-b border-white/40 glass-panel relative z-20 bg-white/80 backdrop-blur-md">
+          {/* Title - Clickable to toggle */}
+          <div
+            onClick={() => setIsTimelineOpen(!isTimelineOpen)}
+            className="cursor-pointer group select-none"
+            title={isTimelineOpen ? "收合時間軸" : "展開時間軸"}
+          >
+            <div className="flex items-center gap-2">
+                <h1 className="text-3xl font-serif italic font-bold text-rose-900 tracking-wide text-glow">My Skin Diary</h1>
+                {/* Toggle Icon */}
+                <ChevronDown
+                    className={`text-rose-400 transition-transform duration-300 ${isTimelineOpen ? 'rotate-180' : ''}`}
+                    size={20}
+                />
+            </div>
+            <p className="text-[10px] text-rose-400 font-bold tracking-[0.2em] uppercase mt-1 group-hover:text-rose-500 transition-colors">Noble Edition</p>
           </div>
+          
           <div className="flex gap-3">
             <button
               onClick={() => setIsProductManagerOpen(true)}
@@ -428,22 +397,31 @@ const App: React.FC = () => {
             </button>
           </div>
         </header>
-        {/* Timeline */}
-        <section className="bg-white/30 backdrop-blur-md border-b border-white/20 shadow-sm transition-all py-1 relative z-10">
-          <div className="max-w-6xl mx-auto">
-              <Timeline
-                  selectedDate={selectedDate}
-                  onSelectDate={handleDateChange}
-                  completedDates={Object.keys(logs).filter(k => logs[k].completed)}
-              />
-          </div>
-        </section>
+
+        {/* Collapsible Timeline Wrapper */}
+        <div
+            className={`overflow-hidden transition-all duration-500 ease-in-out bg-white/30 backdrop-blur-md border-b border-white/20 shadow-sm relative z-10
+            ${isTimelineOpen ? 'max-h-96 opacity-100 translate-y-0' : 'max-h-0 opacity-0 -translate-y-4'}`}
+        >
+            <div className="py-1">
+                <div className="max-w-6xl mx-auto">
+                    <Timeline
+                        selectedDate={selectedDate}
+                        onSelectDate={handleDateChange}
+                        completedDates={Object.keys(logs).filter(k => logs[k].completed)}
+                    />
+                </div>
+            </div>
+        </div>
       </div>
 
-      {/* Main Content: Responsive Grid */}
-      <main className="max-w-6xl mx-auto px-4 sm:px-6 py-8">
+      {/* 2. Main Content (Dynamic Top Padding) */}
+      <main
+        className={`max-w-6xl mx-auto px-4 sm:px-6 py-8 transition-all duration-500 ease-in-out
+        ${isTimelineOpen ? 'pt-56' : 'pt-28'}`}
+      >
         
-        {/* Top Section: Date Info & Machine (Grid on Desktop) */}
+        {/* Top Section: Date Info & Machine */}
         <div className="grid grid-cols-1 md:grid-cols-12 gap-6 mb-8 items-stretch">
             
             {/* Left: Date/Theme */}
@@ -456,10 +434,8 @@ const App: React.FC = () => {
                 <div className={`flex-1 p-8 rounded-3xl shadow-lg border border-white/60 relative overflow-hidden transition-all duration-500 group
                     ${getThemeBackgroundClass(defaultRoutine.theme)} backdrop-blur-md`}>
                     
-                    {/* Decorative Background Pattern (Image Based) */}
                     <ThemeFlowerPattern themeName={defaultRoutine.theme} />
 
-                    {/* Decorative Elements (Blobs) */}
                     <div className="absolute top-0 right-0 w-64 h-64 bg-gradient-to-br from-white/40 to-transparent rounded-full blur-3xl -translate-y-1/2 translate-x-1/3 pointer-events-none"></div>
                     <div className="absolute bottom-0 left-0 w-40 h-40 bg-gradient-to-tr from-white/60 to-transparent rounded-full blur-2xl translate-y-1/3 -translate-x-1/4 pointer-events-none"></div>
 
@@ -508,9 +484,9 @@ const App: React.FC = () => {
             </div>
         </div>
 
-        {/* Middle Section: Routines (Split Grid on Desktop) */}
+        {/* Middle Section: Routines */}
         <div className="grid grid-cols-1 md:grid-cols-2 gap-8 mb-12">
-            {/* Morning Routine - WARM/SUN TINT */}
+            {/* Morning */}
             <section className="bg-gradient-to-br from-amber-50/80 via-white to-orange-50/50 backdrop-blur-md border border-amber-100/50 rounded-3xl p-7 flex flex-col h-full shadow-sm hover:shadow-lg transition-all duration-300">
                 <div className="flex items-center gap-3 mb-6 border-b border-amber-100 pb-4">
                     <div className="p-2 bg-amber-100 rounded-full border border-amber-200 text-amber-500 shadow-sm ring-2 ring-white">
@@ -535,7 +511,7 @@ const App: React.FC = () => {
                 </div>
             </section>
 
-            {/* Evening Routine - COOL/MOON TINT */}
+            {/* Evening */}
             <section className="bg-gradient-to-br from-indigo-50/80 via-white to-slate-50/50 backdrop-blur-md border border-indigo-100/50 rounded-3xl p-7 flex flex-col h-full shadow-sm hover:shadow-lg transition-all duration-300">
                 <div className="flex items-center gap-3 mb-6 border-b border-indigo-100 pb-4">
                     <div className="p-2 bg-indigo-100 rounded-full border border-indigo-200 text-indigo-500 shadow-sm ring-2 ring-white">
@@ -571,7 +547,7 @@ const App: React.FC = () => {
             </section>
         </div>
 
-        {/* Bottom Section: Journal & Diagnosis (Centered) */}
+        {/* Bottom Section: Journal */}
         <section className="max-w-3xl mx-auto">
             <div className="flex justify-between items-end mb-4 px-2">
               <h3 className="font-serif font-bold text-2xl text-gray-800 flex items-center gap-3">
@@ -583,12 +559,10 @@ const App: React.FC = () => {
             </div>
             
             <div className="glass-panel rounded-3xl overflow-hidden p-8 mb-8 relative">
-                {/* Decoration */}
                 <div className="absolute top-0 right-0 p-10 opacity-5 pointer-events-none">
                     <Quote size={100} />
                 </div>
 
-                {/* Skin Condition Selector */}
                 <SkinConditionSelector
                     selected={skinConditionInput}
                     onChange={setSkinConditionInput}
@@ -615,14 +589,11 @@ const App: React.FC = () => {
                     </button>
                 </div>
                 
-                {/* AI Feedback Section (豪華版) */}
                 {aiFeedback && (
                     <div className="animate-[fadeIn_0.5s_ease-out] mt-8 pt-8 border-t border-rose-100/50">
                         <div className="glass-panel rounded-3xl border border-white/60 shadow-xl overflow-hidden relative">
-                            {/* Shimmer overlay */}
                             <div className="absolute inset-0 bg-gradient-to-br from-white/40 via-transparent to-rose-50/30 pointer-events-none"></div>
 
-                            {/* 1. Header & Title */}
                             <div className="px-8 py-6 border-b border-rose-100/50 flex items-center gap-4 relative z-10">
                                  <div className="bg-gradient-to-br from-rose-100 to-pink-200 p-3 rounded-2xl text-rose-600 shadow-sm ring-4 ring-rose-50">
                                     <Sparkles size={22} />
@@ -636,7 +607,6 @@ const App: React.FC = () => {
                             </div>
 
                             <div className="p-8 space-y-8 relative z-10">
-                                {/* 2. Diagnosis Content */}
                                 <div className="relative pl-6 border-l-2 border-rose-200">
                                     <Quote size={32} className="absolute -top-4 -left-5 text-rose-200/50 fill-rose-100" />
                                     <p className="text-gray-600 text-[15px] leading-8 font-light whitespace-pre-line">
@@ -644,7 +614,6 @@ const App: React.FC = () => {
                                     </p>
                                 </div>
 
-                                {/* 3. Action Item */}
                                 {(aiFeedback as any).actionItem && (
                                     <div className="bg-gradient-to-r from-rose-50/80 to-white border border-rose-100 rounded-2xl p-5 flex items-start gap-4 shadow-sm">
                                         <div className="mt-1 bg-rose-500 text-white text-[10px] px-2.5 py-1 rounded-md font-bold shrink-0 tracking-wider shadow-sm">
@@ -656,7 +625,6 @@ const App: React.FC = () => {
                                     </div>
                                 )}
 
-                                {/* 4. History Story */}
                                 {(aiFeedback as any).historyStory && (
                                     <div className="pt-2">
                                         <div className="bg-blue-50/60 rounded-xl p-5 border border-blue-100/50 flex items-start gap-4 text-sm text-gray-600 group hover:bg-blue-50 transition-colors">
@@ -671,7 +639,6 @@ const App: React.FC = () => {
                                     </div>
                                 )}
 
-                                {/* 5. Quote Section */}
                                 {(aiFeedback as any).quote && (
                                     <div className="mt-6 pt-6 border-t border-rose-100/50 flex flex-col items-center justify-center text-center">
                                         <Feather size={18} className="text-rose-300 mb-2" />

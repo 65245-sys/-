@@ -1,9 +1,9 @@
 import React, { useRef } from 'react';
 import { Product } from '../types';
-import { Trash2, GripVertical, ChevronUp, ChevronDown, Sparkles, Loader2 } from 'lucide-react';
+import { Trash2, GripVertical, Sparkles, Loader2 } from 'lucide-react';
 
 interface Props {
-  products: Product[]; 
+  products: Product[];
   type: 'MORNING' | 'EVENING';
   dayOfWeek: number; // 0-6
   onRemove: (id: string) => void;
@@ -13,10 +13,10 @@ interface Props {
   isSorting?: boolean;
 }
 
-const ProductList: React.FC<Props> = ({ 
-  products, 
-  type, 
-  dayOfWeek, 
+const ProductList: React.FC<Props> = ({
+  products,
+  type,
+  dayOfWeek,
   onRemove,
   onReorder,
   onDropItem,
@@ -46,7 +46,11 @@ const ProductList: React.FC<Props> = ({
 
   const handleDragStart = (e: React.DragEvent<HTMLLIElement>, id: string) => {
     dragItem.current = id;
-    e.currentTarget.classList.add('opacity-50');
+    // 拖曳時的視覺效果
+    e.currentTarget.classList.add('opacity-40', 'scale-95', 'ring-2', 'ring-rose-200');
+    
+    // 手機震動回饋 (Haptics)
+    if (navigator.vibrate) navigator.vibrate(50);
   };
 
   const handleDragEnter = (e: React.DragEvent<HTMLLIElement>, id: string) => {
@@ -54,7 +58,9 @@ const ProductList: React.FC<Props> = ({
   };
 
   const handleDragEnd = (e: React.DragEvent<HTMLLIElement>) => {
-    e.currentTarget.classList.remove('opacity-50');
+    // 移除拖曳樣式
+    e.currentTarget.classList.remove('opacity-40', 'scale-95', 'ring-2', 'ring-rose-200');
+    
     if (dragItem.current && dragOverItem.current && dragItem.current !== dragOverItem.current) {
         if (onDropItem) {
             onDropItem(dragItem.current, dragOverItem.current);
@@ -77,7 +83,7 @@ const ProductList: React.FC<Props> = ({
         {/* Header Actions */}
         {onAutoSort && relevantProducts.length > 1 && (
             <div className="flex justify-end mb-3">
-                <button 
+                <button
                     onClick={onAutoSort}
                     disabled={isSorting}
                     className="flex items-center gap-1.5 text-[10px] uppercase tracking-wider font-bold text-rose-500 bg-rose-50/50 border border-rose-100 px-3 py-1.5 rounded-full hover:bg-rose-100/50 transition-colors disabled:opacity-50 disabled:cursor-not-allowed"
@@ -96,25 +102,29 @@ const ProductList: React.FC<Props> = ({
         )}
 
         <ul className="space-y-3 relative">
-        {/* Connector Line - Thinner, lighter */}
+        {/* Connector Line */}
         {relevantProducts.length > 1 && (
             <div className="absolute left-[13px] top-6 bottom-6 w-px bg-gradient-to-b from-gray-200 via-rose-200 to-gray-200 z-0" />
         )}
 
         {relevantProducts.map((p, index) => (
-            <li 
+            <li
                 key={p.id}
                 draggable
                 onDragStart={(e) => handleDragStart(e, p.id)}
                 onDragEnter={(e) => handleDragEnter(e, p.id)}
                 onDragEnd={handleDragEnd}
-                onDragOver={(e) => e.preventDefault()} // Necessary for onDrop to fire/allow dropping
-                className="group flex items-center justify-between text-gray-700 text-sm bg-white/70 backdrop-blur-sm border border-white p-3.5 rounded-2xl shadow-sm transition-all hover:border-rose-200 relative z-10 hover:shadow-md cursor-grab active:cursor-grabbing hover:-translate-y-0.5"
+                onDragOver={(e) => e.preventDefault()}
+                // 防止長按反白文字 + 優化觸控
+                className="group flex items-center justify-between text-gray-700 text-sm bg-white/70 backdrop-blur-sm border border-white p-3.5 rounded-2xl shadow-sm transition-all hover:border-rose-200 relative z-10 hover:shadow-md select-none touch-manipulation"
             >
             <div className="flex items-center flex-1 min-w-0">
-                {/* Drag Handle */}
-                <div className="mr-1 text-gray-300 cursor-grab active:cursor-grabbing hover:text-rose-300">
-                    <GripVertical size={14} />
+                {/* Drag Handle: 關鍵修改 (touch-none, p-3) */}
+                <div
+                    className="mr-1 text-gray-300 cursor-grab active:cursor-grabbing hover:text-rose-300 p-3 -ml-3 touch-none select-none"
+                    onTouchStart={() => { if (navigator.vibrate) navigator.vibrate(50); }}
+                >
+                    <GripVertical size={18} />
                 </div>
 
                 {/* Order Number / Icon */}
@@ -143,30 +153,12 @@ const ProductList: React.FC<Props> = ({
                 </div>
             </div>
             
-            {/* Actions: Sort & Delete */}
-            <div className="flex items-center gap-1 opacity-0 group-hover:opacity-100 focus-within:opacity-100 transition-opacity">
-                {onReorder && (
-                    <div className="flex flex-col gap-0.5 mr-1">
-                        <button 
-                            onClick={() => onReorder(p.id, 'up')}
-                            disabled={index === 0}
-                            className="text-gray-300 hover:text-rose-500 disabled:opacity-20 p-0.5"
-                        >
-                            <ChevronUp size={14} />
-                        </button>
-                        <button 
-                            onClick={() => onReorder(p.id, 'down')}
-                            disabled={index === relevantProducts.length - 1}
-                            className="text-gray-300 hover:text-rose-500 disabled:opacity-20 p-0.5"
-                        >
-                            <ChevronDown size={14} />
-                        </button>
-                    </div>
-                )}
-                
-                <button 
+            {/* Actions: 只保留刪除 */}
+            {/* 手機版(預設)直接顯示，桌面版(md)滑鼠移過去才顯示 */}
+            <div className="flex items-center opacity-100 md:opacity-0 md:group-hover:opacity-100 focus-within:opacity-100 transition-opacity">
+                <button
                     onClick={() => onRemove(p.id)}
-                    className="text-gray-300 hover:text-rose-500 hover:bg-rose-50 p-2 rounded-lg transition-all"
+                    className="text-gray-300 hover:text-rose-500 hover:bg-rose-50 p-2 rounded-lg transition-all active:scale-90"
                     title="刪除此產品"
                 >
                     <Trash2 size={16} />
