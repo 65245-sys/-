@@ -1,6 +1,5 @@
-import React, { useState, useEffect, useRef } from 'react';
-// 加入 Download, Upload, Settings 圖示
-import { Calendar, Plus, CheckCircle, Undo2, ChevronDown, Moon, Sun, Edit3, Sparkles, Archive, Loader2, Quote, Settings, Download, Upload, AlertCircle, Settings2, CalendarDays, BookOpen, Feather } from 'lucide-react';
+import React, { useState, useEffect, useRef, useMemo } from 'react';
+import { Calendar, Plus, CheckCircle, Undo2, ChevronDown, Moon, Sun, Edit3, Sparkles, Archive, Loader2, Quote, Settings, Download, Upload, AlertCircle, Settings2, CalendarDays, BookOpen, Feather, Lock, History } from 'lucide-react';
 import { DailyLog, DailyLogsMap, Product, MachineMode, DayRoutine } from './types';
 import { getDisplayDate, formatDateKey } from './utils/dateUtils';
 import { getRoutineForDay, INITIAL_PRODUCTS, analyzeProductInput, getOptimalProductOrder, DEFAULT_WEEKLY_SCHEDULE, getThemeType } from './utils/routineLogic';
@@ -63,7 +62,6 @@ const SettingsModal = ({ isOpen, onClose, onImport, onExport }: { isOpen: boolea
                         <AlertCircle size={20} className="shrink-0 mt-0.5" />
                         <p>資料目前僅儲存在此手機中。建議定期備份，以免清除瀏覽紀錄後資料遺失。</p>
                     </div>
-
                     <button onClick={onExport} className="w-full flex items-center justify-between p-4 bg-gray-50 hover:bg-gray-100 rounded-xl transition-colors group">
                         <div className="flex items-center gap-3">
                             <div className="bg-white p-2 rounded-full shadow-sm text-emerald-500"><Download size={20} /></div>
@@ -73,7 +71,6 @@ const SettingsModal = ({ isOpen, onClose, onImport, onExport }: { isOpen: boolea
                             </div>
                         </div>
                     </button>
-
                     <label className="w-full flex items-center justify-between p-4 bg-gray-50 hover:bg-gray-100 rounded-xl transition-colors cursor-pointer group">
                         <div className="flex items-center gap-3">
                             <div className="bg-white p-2 rounded-full shadow-sm text-amber-500"><Upload size={20} /></div>
@@ -93,6 +90,7 @@ const SettingsModal = ({ isOpen, onClose, onImport, onExport }: { isOpen: boolea
 const App: React.FC = () => {
   // State
   const [selectedDate, setSelectedDate] = useState<Date>(new Date());
+  // logs 現在會包含: aiResponse, customRoutine (當天的獨立保養品清單)
   const [logs, setLogs] = useState<DailyLogsMap>({});
   const [products, setProducts] = useState<Product[]>([]);
   const [weeklySchedule, setWeeklySchedule] = useState<Record<number, DayRoutine>>(DEFAULT_WEEKLY_SCHEDULE);
@@ -121,6 +119,30 @@ const App: React.FC = () => {
   const isCompleted = !!currentLog?.completed;
   const defaultRoutine = getRoutineForDay(selectedDate, weeklySchedule);
   const activeMachineModes = currentLog?.machineModes || defaultRoutine.machineModes;
+
+  // --- 判斷日期狀態 ---
+  const isPastDate = useMemo(() => {
+      const today = new Date();
+      today.setHours(0,0,0,0);
+      const current = new Date(selectedDate);
+      current.setHours(0,0,0,0);
+      return current < today;
+  }, [selectedDate]);
+
+  // --- 關鍵讀取邏輯：決定今日顯示的產品清單 ---
+  // 1. 先看當天日記有沒有 "customRoutine" (專屬清單)
+  // 2. 如果沒有，再看有沒有舊版的 "routineSnapshot" (相容舊資料)
+  // 3. 如果都沒有，才使用全域 "products" (預設)
+  const displayProducts = useMemo(() => {
+      if (currentLog?.customRoutine) return currentLog.customRoutine;
+      if (currentLog?.routineSnapshot) return currentLog.routineSnapshot;
+      return products;
+  }, [currentLog, products]);
+
+  // 是否正在檢視一個「已經獨立/與全域脫鉤」的清單 (例如過去的紀錄)
+  // 只有當「是過去日期」且「有專屬紀錄」時，我們才視為純歷史檢視
+  // 但依照新邏輯，任何編輯都會產生 customRoutine，所以我們主要用這個來標示「獨立作業」
+  const hasCustomRoutine = !!(currentLog?.customRoutine || currentLog?.routineSnapshot);
 
   // Persistence (Load)
   useEffect(() => {
@@ -163,12 +185,18 @@ const App: React.FC = () => {
       setIsScheduleModalOpen(false);
   };
 
+  // --- Date Change: Load Data ---
   useEffect(() => {
     setNoteInput(logs[dateKey]?.note || '');
     setSkinConditionInput(logs[dateKey]?.skinConditions || []);
+    if (logs[dateKey]?.aiResponse) {
+        setAiFeedback(logs[dateKey].aiResponse);
+    } else {
+        setAiFeedback(null);
+    }
   }, [dateKey, logs]);
 
-  // Handlers
+  // --- Handlers: Backup & Restore ---
   const handleExportData = () => {
     const data = {
         logs,
@@ -190,17 +218,14 @@ const App: React.FC = () => {
   const handleImportData = (e: React.ChangeEvent<HTMLInputElement>) => {
     const file = e.target.files?.[0];
     if (!file) return;
-
     if (!confirm('確定要匯入此備份嗎？目前的資料將會被覆蓋！')) {
         e.target.value = '';
         return;
     }
-
     const reader = new FileReader();
     reader.onload = (event) => {
         try {
             const json = JSON.parse(event.target?.result as string);
-            
             if (json.logs) {
                 setLogs(json.logs);
                 localStorage.setItem('skin_logs', JSON.stringify(json.logs));
@@ -213,7 +238,6 @@ const App: React.FC = () => {
                 setWeeklySchedule(json.schedule);
                 localStorage.setItem('skin_weekly_schedule', JSON.stringify(json.schedule));
             }
-
             alert('資料還原成功！網頁將重新整理。');
             window.location.reload();
         } catch (error) {
@@ -224,17 +248,31 @@ const App: React.FC = () => {
     reader.readAsText(file);
   };
 
+  // --- Core: Toggle Complete ---
   const toggleComplete = () => {
-    setLogs(prev => ({
-      ...prev,
-      [dateKey]: {
-        ...prev[dateKey],
-        completed: !prev[dateKey]?.completed,
-        timestamp: !prev[dateKey]?.completed ? Date.now() : undefined,
-        note: noteInput,
-        skinConditions: skinConditionInput
-      }
-    }));
+    setLogs(prev => {
+        const currentData = prev[dateKey];
+        const isNowCompleted = !currentData?.completed;
+        
+        // 當完成時，如果當天還沒有專屬清單，就存一份當下的快照
+        // 這樣以後怎麼改全域，這一天都不會變
+        let snapshot = currentData?.customRoutine || currentData?.routineSnapshot;
+        if (isNowCompleted && !snapshot) {
+            snapshot = [...products];
+        }
+
+        return {
+            ...prev,
+            [dateKey]: {
+                ...prev[dateKey],
+                completed: isNowCompleted,
+                timestamp: isNowCompleted ? Date.now() : undefined,
+                note: noteInput,
+                skinConditions: skinConditionInput,
+                customRoutine: snapshot // 確保儲存專屬清單
+            }
+        };
+    });
   };
 
   const saveJournal = async () => {
@@ -242,7 +280,9 @@ const App: React.FC = () => {
       ...logs[dateKey],
       completed: logs[dateKey]?.completed || false,
       note: noteInput,
-      skinConditions: skinConditionInput
+      skinConditions: skinConditionInput,
+      // 確保這裡不會不小心覆蓋掉 customRoutine
+      customRoutine: logs[dateKey]?.customRoutine
     };
     setLogs(prev => ({ ...prev, [dateKey]: updatedLog }));
 
@@ -267,22 +307,10 @@ const App: React.FC = () => {
         setIsGeneratingAI(true);
         try {
           const workerUrl = "https://skincare.65245.workers.dev";
-          // [AI Prompt 更新]：加入心情分析指令
           const promptText = `你是一位專業皮膚科顧問，同時也是一位溫暖、善解人意的閨蜜。
-    
-    【使用者輸入】
     今日膚況標籤: ${conditions.join(', ')}
     日記與心情備註: "${note}"
-
-    【任務目標】
-    請回傳一個 JSON 物件，必須包含以下欄位：
-    {
-      "title": "一句優雅且溫暖的標題 (例如：給疲憊的妳一點溫柔)",
-      "content": "請撰寫一段約 200 字的綜合建議。內容必須包含：1. 針對「膚況」的專業保養建議。 2. 針對「心情備註」的溫暖回應（如果是負面情緒請給予安慰，正面情緒則一起慶祝）。讓使用者感覺到被關心，身心靈都被照顧。",
-      "actionItem": "一個具體的行動建議 (保養或放鬆皆可，例如：點個香氛蠟燭敷面膜)",
-      "historyStory": "一個與美容、歷史或心理療癒相關的優雅小故事 (100字以內)",
-      "quote": "一句能治癒人心、與美麗或自我成長相關的名言"
-    }`;
+    請回傳 JSON 格式，包含: { "title": "...", "content": "...", "actionItem": "...", "historyStory": "...", "quote": "..." }`;
     
           const response = await fetch(workerUrl, {
             method: "POST",
@@ -295,7 +323,18 @@ const App: React.FC = () => {
           if (!aiText) throw new Error("AI 回應為空");
           const jsonStr = aiText.replace(/```json|```/g, "").trim();
           const result = JSON.parse(jsonStr);
-          setAiFeedback({ title: result.title || "肌膚的輕聲細語", content: result.content || "暫時無法讀取建議。", ...result });
+          
+          const feedbackData = { title: result.title || "肌膚的輕聲細語", content: result.content || "暫時無法讀取建議。", ...result };
+          
+          setAiFeedback(feedbackData);
+          setLogs(prev => ({
+              ...prev,
+              [dateKey]: {
+                  ...prev[dateKey],
+                  aiResponse: feedbackData
+              }
+          }));
+
         } catch (error: any) {
           console.error("AI Error:", error);
           alert("發生意外錯誤：\n" + error.message);
@@ -305,49 +344,79 @@ const App: React.FC = () => {
         }
   };
 
-  const addProduct = (p: Product) => {
-    setProducts(prev => {
-        const maxOrder = prev.length > 0 ? Math.max(...prev.map(x => x.order)) : 0;
-        return [...prev, { ...p, order: maxOrder + 1 }];
-    });
-  };
+  // --- 關鍵修改：獨立作業處理器 (Handler) ---
+  // 這些函式現在會同時處理「當天存檔」與「全域同步」
 
-  const updateProduct = (updated: Product) => {
-    setProducts(prev => prev.map(p => p.id === updated.id ? updated : p));
-  };
-
-  const removeProduct = (id: string) => {
-    setProducts(prev => prev.filter(p => p.id !== id));
-  };
-
-  const reorderProduct = (id: string, direction: 'up' | 'down') => {
-      setProducts(prev => {
-          const list = [...prev].sort((a, b) => a.order - b.order);
-          const index = list.findIndex(p => p.id === id);
-          if (index === -1) return prev;
-          if (direction === 'up' && index > 0) {
-              const temp = list[index].order;
-              list[index].order = list[index - 1].order;
-              list[index - 1].order = temp;
-          } else if (direction === 'down' && index < list.length - 1) {
-              const temp = list[index].order;
-              list[index].order = list[index + 1].order;
-              list[index + 1].order = temp;
+  // Helper: 更新特定日期的邏輯
+  const performUpdate = (newList: Product[]) => {
+      // 1. 永遠將新清單存入「當天」的日記 (獨立作業)
+      setLogs(prev => ({
+          ...prev,
+          [dateKey]: {
+              ...prev[dateKey],
+              customRoutine: newList
           }
-          return [...list];
-      });
+      }));
+
+      // 2. 判斷是否要同步到全域 (影響未來)
+      // 如果不是過去的日子 (即今天或未來)，則更新全域
+      if (!isPastDate) {
+          setProducts(newList);
+      }
+  };
+
+  const handleAddProduct = (p: Product) => {
+      // 計算新清單
+      const currentList = displayProducts; // 基於目前畫面上的清單做修改
+      const maxOrder = currentList.length > 0 ? Math.max(...currentList.map(x => x.order)) : 0;
+      const newList = [...currentList, { ...p, order: maxOrder + 1 }];
+      
+      performUpdate(newList);
+  };
+
+  const handleUpdateProduct = (updated: Product) => {
+      const newList = displayProducts.map(p => p.id === updated.id ? updated : p);
+      performUpdate(newList);
+  };
+
+  const handleRemoveProduct = (id: string) => {
+      const newList = displayProducts.filter(p => p.id !== id);
+      performUpdate(newList);
+  };
+
+  const handleReorderProduct = (id: string, direction: 'up' | 'down') => {
+      const list = [...displayProducts];
+      const sortedList = list.sort((a, b) => a.order - b.order);
+      const index = sortedList.findIndex(p => p.id === id);
+      
+      if (index === -1) return;
+
+      if (direction === 'up' && index > 0) {
+          const temp = sortedList[index].order;
+          sortedList[index].order = sortedList[index - 1].order;
+          sortedList[index - 1].order = temp;
+      } else if (direction === 'down' && index < sortedList.length - 1) {
+          const temp = sortedList[index].order;
+          sortedList[index].order = sortedList[index + 1].order;
+          sortedList[index + 1].order = temp;
+      }
+      
+      performUpdate([...sortedList]);
   };
 
   const handleDragDrop = (draggedId: string, targetId: string) => {
-      setProducts(prev => {
-          const list = [...prev].sort((a, b) => a.order - b.order);
-          const draggedIndex = list.findIndex(p => p.id === draggedId);
-          const targetIndex = list.findIndex(p => p.id === targetId);
-          if (draggedIndex === -1 || targetIndex === -1 || draggedIndex === targetIndex) return prev;
-          const [removed] = list.splice(draggedIndex, 1);
-          list.splice(targetIndex, 0, removed);
-          return list.map((p, idx) => ({ ...p, order: idx }));
-      });
+      const list = [...displayProducts];
+      const sortedList = list.sort((a, b) => a.order - b.order);
+      const draggedIndex = sortedList.findIndex(p => p.id === draggedId);
+      const targetIndex = sortedList.findIndex(p => p.id === targetId);
+
+      if (draggedIndex === -1 || targetIndex === -1 || draggedIndex === targetIndex) return;
+
+      const [removed] = sortedList.splice(draggedIndex, 1);
+      sortedList.splice(targetIndex, 0, removed);
+      const newList = sortedList.map((p, idx) => ({ ...p, order: idx }));
+
+      performUpdate(newList);
   };
 
   const handleAutoSort = (scope: 'MORNING' | 'EVENING') => {
@@ -374,7 +443,9 @@ const App: React.FC = () => {
             return p;
         });
     };
-    setProducts(prev => performLocalSort(prev));
+
+    const newList = performLocalSort(displayProducts);
+    performUpdate(newList);
     setTimeout(() => setIsSorting(false), 300);
   };
 
@@ -396,162 +467,100 @@ const App: React.FC = () => {
   return (
     <div className="min-h-screen pb-24 font-sans text-gray-800 selection:bg-rose-200">
       
-      {/* 1. Header (FIXED + COLLAPSIBLE) */}
+      {/* 1. Header */}
       <div className="fixed top-0 left-0 right-0 z-40 w-full transition-all duration-300">
-        
-        {/* Top Bar (Always Visible) */}
         <header
             style={{ paddingTop: 'calc(env(safe-area-inset-top) + 1rem)' }}
             className="px-6 pb-4 flex justify-between items-center shadow-sm border-b border-white/40 glass-panel relative z-20 bg-white/80 backdrop-blur-md"
         >
-          {/* Title - Clickable to toggle */}
-          <div
-            onClick={() => setIsTimelineOpen(!isTimelineOpen)}
-            className="cursor-pointer group select-none"
-            title={isTimelineOpen ? "收合時間軸" : "展開時間軸"}
-          >
+          <div onClick={() => setIsTimelineOpen(!isTimelineOpen)} className="cursor-pointer group select-none">
             <div className="flex items-center gap-2">
                 <h1 className="text-3xl font-serif italic font-bold text-rose-900 tracking-wide text-glow">My Skin Diary</h1>
-                <ChevronDown
-                    className={`text-rose-400 transition-transform duration-300 ${isTimelineOpen ? 'rotate-180' : ''}`}
-                    size={20}
-                />
+                <ChevronDown className={`text-rose-400 transition-transform duration-300 ${isTimelineOpen ? 'rotate-180' : ''}`} size={20}/>
             </div>
             <p className="text-[10px] text-rose-400 font-bold tracking-[0.2em] uppercase mt-1 group-hover:text-rose-500 transition-colors">Noble Edition</p>
           </div>
           
           <div className="flex gap-3">
-            <button
-              onClick={() => setIsProductManagerOpen(true)}
-              className="bg-white/50 text-rose-400 p-2.5 rounded-full hover:bg-white hover:text-rose-500 transition-all shadow-sm border border-rose-100 hover:shadow-md"
-              aria-label="我的保養櫃"
-            >
+            <button onClick={() => setIsProductManagerOpen(true)} className="bg-white/50 text-rose-400 p-2.5 rounded-full hover:bg-white hover:text-rose-500 transition-all shadow-sm border border-rose-100 hover:shadow-md">
               <Archive size={20} />
             </button>
-            <button
-              onClick={() => setIsCalendarOpen(true)}
-              className="bg-white/50 text-rose-400 p-2.5 rounded-full hover:bg-white hover:text-rose-500 transition-all shadow-sm border border-rose-100 hover:shadow-md"
-              aria-label="開啟月曆"
-            >
+            <button onClick={() => setIsCalendarOpen(true)} className="bg-white/50 text-rose-400 p-2.5 rounded-full hover:bg-white hover:text-rose-500 transition-all shadow-sm border border-rose-100 hover:shadow-md">
               <Calendar size={20} />
             </button>
-            {/* 設定按鈕 */}
-            <button
-              onClick={() => setIsSettingsOpen(true)}
-              className="bg-white/50 text-gray-400 p-2.5 rounded-full hover:bg-white hover:text-gray-600 transition-all shadow-sm border border-rose-100 hover:shadow-md"
-              aria-label="設定與備份"
-            >
+            <button onClick={() => setIsSettingsOpen(true)} className="bg-white/50 text-gray-400 p-2.5 rounded-full hover:bg-white hover:text-gray-600 transition-all shadow-sm border border-rose-100 hover:shadow-md">
               <Settings size={20} />
             </button>
           </div>
         </header>
 
-        {/* Collapsible Timeline Wrapper */}
-        <div
-            className={`overflow-hidden transition-all duration-500 ease-in-out bg-white/30 backdrop-blur-md border-b border-white/20 shadow-sm relative z-10
-            ${isTimelineOpen ? 'max-h-96 opacity-100 translate-y-0' : 'max-h-0 opacity-0 -translate-y-4'}`}
-        >
+        <div className={`overflow-hidden transition-all duration-500 ease-in-out bg-white/30 backdrop-blur-md border-b border-white/20 shadow-sm relative z-10 ${isTimelineOpen ? 'max-h-96 opacity-100 translate-y-0' : 'max-h-0 opacity-0 -translate-y-4'}`}>
             <div className="py-1">
                 <div className="max-w-6xl mx-auto">
-                    <Timeline
-                        selectedDate={selectedDate}
-                        onSelectDate={handleDateChange}
-                        completedDates={Object.keys(logs).filter(k => logs[k].completed)}
-                    />
+                    <Timeline selectedDate={selectedDate} onSelectDate={handleDateChange} completedDates={Object.keys(logs).filter(k => logs[k].completed)} />
                 </div>
             </div>
         </div>
       </div>
 
-      {/* 2. Main Content (Dynamic Top Padding) */}
-      <main
-        className={`max-w-6xl mx-auto px-4 sm:px-6 py-8 transition-all duration-500 ease-in-out
-        ${isTimelineOpen ? 'pt-72' : 'pt-36'}`}
-      >
+      {/* 2. Main Content */}
+      <main className={`max-w-6xl mx-auto px-4 sm:px-6 py-8 transition-all duration-500 ease-in-out ${isTimelineOpen ? 'pt-72' : 'pt-36'}`}>
         
-        {/* Top Section: Date Info & Machine */}
+        {/* Top Section */}
         <div className="grid grid-cols-1 md:grid-cols-12 gap-6 mb-8 items-stretch">
-            
-            {/* Left: Date/Theme */}
             <div className="md:col-span-7 lg:col-span-8 flex flex-col justify-between">
-                <h2 className="text-4xl font-serif font-medium text-gray-800 px-1 mb-4 flex items-center">
-                    {getDisplayDate(selectedDate)}
-                </h2>
-                
-                {/* Dynamic Background Card */}
-                <div className={`flex-1 p-8 rounded-3xl shadow-lg border border-white/60 relative overflow-hidden transition-all duration-500 group
-                    ${getThemeBackgroundClass(defaultRoutine.theme)} backdrop-blur-md`}>
-                    
+                <h2 className="text-4xl font-serif font-medium text-gray-800 px-1 mb-4 flex items-center">{getDisplayDate(selectedDate)}</h2>
+                <div className={`flex-1 p-8 rounded-3xl shadow-lg border border-white/60 relative overflow-hidden transition-all duration-500 group ${getThemeBackgroundClass(defaultRoutine.theme)} backdrop-blur-md`}>
                     <ThemeFlowerPattern themeName={defaultRoutine.theme} />
-
                     <div className="absolute top-0 right-0 w-64 h-64 bg-gradient-to-br from-white/40 to-transparent rounded-full blur-3xl -translate-y-1/2 translate-x-1/3 pointer-events-none"></div>
                     <div className="absolute bottom-0 left-0 w-40 h-40 bg-gradient-to-tr from-white/60 to-transparent rounded-full blur-2xl translate-y-1/3 -translate-x-1/4 pointer-events-none"></div>
-
                     <div className="relative z-10">
-                        <span className="inline-block px-4 py-1.5 rounded-full text-xs font-bold bg-white/70 backdrop-blur border border-white text-gray-500 mb-3 shadow-sm tracking-widest uppercase">
-                        Today's Theme
-                        </span>
+                        <span className="inline-block px-4 py-1.5 rounded-full text-xs font-bold bg-white/70 backdrop-blur border border-white text-gray-500 mb-3 shadow-sm tracking-widest uppercase">Today's Theme</span>
                         <h3 className="text-3xl font-serif font-bold text-gray-800 mb-3 tracking-wide drop-shadow-sm">{defaultRoutine.theme}</h3>
                         <p className="text-gray-700 leading-relaxed font-light text-lg drop-shadow-sm mix-blend-hard-light">{defaultRoutine.description}</p>
                     </div>
                 </div>
             </div>
-
-            {/* Right: Machine Guide */}
             <div className="md:col-span-5 lg:col-span-4 h-full">
                 <div className="glass-panel rounded-3xl p-6 h-full flex flex-col justify-center relative group hover:shadow-xl transition-shadow duration-300">
                     <div className="flex justify-between items-start mb-5">
-                        <h3 className="font-bold text-gray-700 flex items-center gap-2 font-serif text-lg">
-                            <Sparkles size={18} className="text-rose-400"/> 美容儀模式
-                        </h3>
+                        <h3 className="font-bold text-gray-700 flex items-center gap-2 font-serif text-lg"><Sparkles size={18} className="text-rose-400"/> 美容儀模式</h3>
                         <div className="flex gap-1">
-                             <button
-                                onClick={() => setIsScheduleModalOpen(true)}
-                                className="p-2 rounded-full text-gray-400 hover:text-rose-500 hover:bg-rose-50/50 transition-colors"
-                                title="編輯療程安排"
-                            >
-                                <CalendarDays size={18} />
-                            </button>
-                            <button
-                                onClick={() => setIsMachineModalOpen(true)}
-                                className="p-2 rounded-full text-gray-400 hover:text-rose-500 hover:bg-rose-50/50 transition-colors"
-                                title="今日調整"
-                            >
-                                <Settings2 size={18} />
-                            </button>
+                             <button onClick={() => setIsScheduleModalOpen(true)} className="p-2 rounded-full text-gray-400 hover:text-rose-500 hover:bg-rose-50/50 transition-colors"><CalendarDays size={18} /></button>
+                            <button onClick={() => setIsMachineModalOpen(true)} className="p-2 rounded-full text-gray-400 hover:text-rose-500 hover:bg-rose-50/50 transition-colors"><Settings2 size={18} /></button>
                         </div>
                     </div>
                     <MachineIndicator modes={activeMachineModes} />
-                    <button
-                         onClick={() => setIsMachineModalOpen(true)}
-                         className="w-full mt-4 py-2.5 text-xs font-bold text-rose-500 bg-rose-50/50 border border-rose-100/50 rounded-xl hover:bg-rose-100/50 transition-colors flex items-center justify-center gap-1"
-                    >
-                        <Settings2 size={14} /> 編輯今日行程
-                    </button>
+                    <button onClick={() => setIsMachineModalOpen(true)} className="w-full mt-4 py-2.5 text-xs font-bold text-rose-500 bg-rose-50/50 border border-rose-100/50 rounded-xl hover:bg-rose-100/50 transition-colors flex items-center justify-center gap-1"><Settings2 size={14} /> 編輯今日行程</button>
                 </div>
             </div>
         </div>
 
-        {/* Middle Section: Routines */}
+        {/* Middle Section: Routines (使用 displayProducts) */}
+        {/* 如果正在檢視已經「獨立存檔」的清單 (有 customRoutine) */}
+        {hasCustomRoutine && (
+            <div className="mb-4 flex items-center justify-center gap-2 text-gray-500 bg-gray-50/50 p-2 rounded-lg text-xs border border-gray-100">
+                {isPastDate ? (
+                     <><History size={14} /> <span>歷史紀錄 (編輯不會影響今日)</span></>
+                ) : (
+                     <><Lock size={14} /> <span>今日專屬設定 (已與全域連動)</span></>
+                )}
+            </div>
+        )}
+
         <div className="grid grid-cols-1 md:grid-cols-2 gap-8 mb-12">
-            {/* Morning */}
             <section className="bg-gradient-to-br from-amber-50/80 via-white to-orange-50/50 backdrop-blur-md border border-amber-100/50 rounded-3xl p-7 flex flex-col h-full shadow-sm hover:shadow-lg transition-all duration-300">
                 <div className="flex items-center gap-3 mb-6 border-b border-amber-100 pb-4">
-                    <div className="p-2 bg-amber-100 rounded-full border border-amber-200 text-amber-500 shadow-sm ring-2 ring-white">
-                        <Sun size={24} />
-                    </div>
-                    <div>
-                        <h3 className="font-serif font-bold text-2xl text-amber-950">Morning Ritual</h3>
-                        <p className="text-xs text-amber-500 uppercase tracking-widest font-medium">Awaken & Protect</p>
-                    </div>
+                    <div className="p-2 bg-amber-100 rounded-full border border-amber-200 text-amber-500 shadow-sm ring-2 ring-white"><Sun size={24} /></div>
+                    <div><h3 className="font-serif font-bold text-2xl text-amber-950">Morning Ritual</h3><p className="text-xs text-amber-500 uppercase tracking-widest font-medium">Awaken & Protect</p></div>
                 </div>
                 <div className="flex-1">
                     <ProductList
-                        products={products}
+                        products={displayProducts}
                         type="MORNING"
                         dayOfWeek={selectedDate.getDay()}
-                        onRemove={removeProduct}
-                        onReorder={reorderProduct}
+                        onRemove={handleRemoveProduct}
+                        onReorder={handleReorderProduct}
                         onDropItem={handleDragDrop}
                         onAutoSort={() => handleAutoSort('MORNING')}
                         isSorting={isSorting}
@@ -559,37 +568,25 @@ const App: React.FC = () => {
                 </div>
             </section>
 
-            {/* Evening */}
             <section className="bg-gradient-to-br from-indigo-50/80 via-white to-slate-50/50 backdrop-blur-md border border-indigo-100/50 rounded-3xl p-7 flex flex-col h-full shadow-sm hover:shadow-lg transition-all duration-300">
                 <div className="flex items-center gap-3 mb-6 border-b border-indigo-100 pb-4">
-                    <div className="p-2 bg-indigo-100 rounded-full border border-indigo-200 text-indigo-500 shadow-sm ring-2 ring-white">
-                        <Moon size={24} />
-                    </div>
-                    <div>
-                        <h3 className="font-serif font-bold text-2xl text-indigo-950">Evening Ritual</h3>
-                        <p className="text-xs text-indigo-500 uppercase tracking-widest font-medium">Repair & Nourish</p>
-                    </div>
+                    <div className="p-2 bg-indigo-100 rounded-full border border-indigo-200 text-indigo-500 shadow-sm ring-2 ring-white"><Moon size={24} /></div>
+                    <div><h3 className="font-serif font-bold text-2xl text-indigo-950">Evening Ritual</h3><p className="text-xs text-indigo-500 uppercase tracking-widest font-medium">Repair & Nourish</p></div>
                 </div>
                 <div className="flex-1">
                     <ProductList
-                        products={products}
+                        products={displayProducts}
                         type="EVENING"
                         dayOfWeek={selectedDate.getDay()}
-                        onRemove={removeProduct}
-                        onReorder={reorderProduct}
+                        onRemove={handleRemoveProduct}
+                        onReorder={handleReorderProduct}
                         onDropItem={handleDragDrop}
                         onAutoSort={() => handleAutoSort('EVENING')}
                         isSorting={isSorting}
                     />
                 </div>
-                
-                <button
-                    onClick={() => {
-                        setEditingProduct(null);
-                        setIsModalOpen(true);
-                    }}
-                    className="mt-6 w-full py-3.5 border border-dashed border-indigo-200 rounded-2xl text-indigo-400 text-sm font-bold bg-indigo-50/30 hover:bg-indigo-50 hover:border-indigo-300 hover:text-indigo-500 transition-all flex items-center justify-center gap-2 group"
-                >
+                {/* 讓每一天都可以新增產品 (獨立存檔) */}
+                <button onClick={() => { setEditingProduct(null); setIsModalOpen(true); }} className="mt-6 w-full py-3.5 border border-dashed border-indigo-200 rounded-2xl text-indigo-400 text-sm font-bold bg-indigo-50/30 hover:bg-indigo-50 hover:border-indigo-300 hover:text-indigo-500 transition-all flex items-center justify-center gap-2 group">
                     <Plus size={16} className="group-hover:scale-110 transition-transform"/> 加入保養步驟
                 </button>
             </section>
@@ -598,102 +595,44 @@ const App: React.FC = () => {
         {/* Bottom Section: Journal */}
         <section className="max-w-3xl mx-auto">
             <div className="flex justify-between items-end mb-4 px-2">
-              <h3 className="font-serif font-bold text-2xl text-gray-800 flex items-center gap-3">
-                  <div className="p-1.5 bg-rose-100 rounded-lg text-rose-500">
-                    <Edit3 size={18} />
-                  </div>
-                  Skin Diary & AI Insights
-              </h3>
+              <h3 className="font-serif font-bold text-2xl text-gray-800 flex items-center gap-3"><div className="p-1.5 bg-rose-100 rounded-lg text-rose-500"><Edit3 size={18} /></div>Skin Diary & AI Insights</h3>
             </div>
-            
             <div className="glass-panel rounded-3xl overflow-hidden p-8 mb-8 relative">
-                <div className="absolute top-0 right-0 p-10 opacity-5 pointer-events-none">
-                    <Quote size={100} />
-                </div>
-
-                <SkinConditionSelector
-                    selected={skinConditionInput}
-                    onChange={setSkinConditionInput}
-                />
-
-                {/* [修改] 提示文字更新，引導心情書寫 */}
-                <textarea
-                    value={noteInput}
-                    onChange={(e) => setNoteInput(e.target.value)}
-                    placeholder="親愛的，今天過得如何？紀錄一下肌膚狀況，或是寫下任何想說的心情，我都在這裡聽..."
-                    className="w-full h-32 p-5 bg-white/60 backdrop-blur-sm rounded-2xl focus:ring-2 focus:ring-rose-200 focus:outline-none resize-none text-base text-gray-700 leading-relaxed appearance-none border border-rose-100 mb-6 transition-all placeholder:text-gray-400 shadow-inner"
-                />
-                
+                <div className="absolute top-0 right-0 p-10 opacity-5 pointer-events-none"><Quote size={100} /></div>
+                <SkinConditionSelector selected={skinConditionInput} onChange={setSkinConditionInput} />
+                <textarea value={noteInput} onChange={(e) => setNoteInput(e.target.value)} placeholder="親愛的，今天過得如何？紀錄一下肌膚狀況，或是寫下任何想說的心情，我都在這裡聽..." className="w-full h-32 p-5 bg-white/60 backdrop-blur-sm rounded-2xl focus:ring-2 focus:ring-rose-200 focus:outline-none resize-none text-base text-gray-700 leading-relaxed appearance-none border border-rose-100 mb-6 transition-all placeholder:text-gray-400 shadow-inner" />
                 <div className="flex justify-end">
-                    <button
-                        onClick={saveJournal}
-                        disabled={isGeneratingAI || (!noteInput.trim() && skinConditionInput.length === 0)}
-                        className="flex items-center gap-2 px-8 py-3.5 bg-gradient-to-r from-rose-400 to-rose-500 text-white font-bold rounded-2xl shadow-lg shadow-rose-200 hover:shadow-rose-300 hover:-translate-y-0.5 disabled:opacity-50 disabled:cursor-not-allowed transition-all active:scale-95 disabled:active:scale-100 disabled:hover:translate-y-0"
-                    >
-                        {isGeneratingAI ? (
-                            <><Loader2 size={18} className="animate-spin"/> 正在諮詢美容閨蜜...</>
-                        ) : (
-                            <><Sparkles size={18} /> {currentLog ? '更新日記並分析' : '儲存日記並分析'}</>
-                        )}
+                    <button onClick={saveJournal} disabled={isGeneratingAI || (!noteInput.trim() && skinConditionInput.length === 0)} className="flex items-center gap-2 px-8 py-3.5 bg-gradient-to-r from-rose-400 to-rose-500 text-white font-bold rounded-2xl shadow-lg shadow-rose-200 hover:shadow-rose-300 hover:-translate-y-0.5 disabled:opacity-50 disabled:cursor-not-allowed transition-all active:scale-95 disabled:active:scale-100 disabled:hover:translate-y-0">
+                        {isGeneratingAI ? <><Loader2 size={18} className="animate-spin"/> 正在諮詢美容閨蜜...</> : <><Sparkles size={18} /> {currentLog ? '更新日記並分析' : '儲存日記並分析'}</>}
                     </button>
                 </div>
-                
                 {aiFeedback && (
                     <div className="animate-[fadeIn_0.5s_ease-out] mt-8 pt-8 border-t border-rose-100/50">
                         <div className="glass-panel rounded-3xl border border-white/60 shadow-xl overflow-hidden relative">
                             <div className="absolute inset-0 bg-gradient-to-br from-white/40 via-transparent to-rose-50/30 pointer-events-none"></div>
-
                             <div className="px-8 py-6 border-b border-rose-100/50 flex items-center gap-4 relative z-10">
-                                 <div className="bg-gradient-to-br from-rose-100 to-pink-200 p-3 rounded-2xl text-rose-600 shadow-sm ring-4 ring-rose-50">
-                                    <Sparkles size={22} />
-                                 </div>
-                                 <div>
-                                     <h4 className="font-serif text-rose-900 font-bold text-2xl tracking-wide">
-                                         {aiFeedback.title || "AI 美容顧問"}
-                                     </h4>
-                                     <p className="text-xs text-rose-400 uppercase tracking-widest font-medium mt-1">Personalized Analysis</p>
-                                 </div>
+                                 <div className="bg-gradient-to-br from-rose-100 to-pink-200 p-3 rounded-2xl text-rose-600 shadow-sm ring-4 ring-rose-50"><Sparkles size={22} /></div>
+                                 <div><h4 className="font-serif text-rose-900 font-bold text-2xl tracking-wide">{aiFeedback.title || "AI 美容顧問"}</h4><p className="text-xs text-rose-400 uppercase tracking-widest font-medium mt-1">Personalized Analysis</p></div>
                             </div>
-
                             <div className="p-8 space-y-8 relative z-10">
-                                <div className="relative pl-6 border-l-2 border-rose-200">
-                                    <Quote size={32} className="absolute -top-4 -left-5 text-rose-200/50 fill-rose-100" />
-                                    <p className="text-gray-600 text-[15px] leading-8 font-light whitespace-pre-line">
-                                        {aiFeedback.content}
-                                    </p>
-                                </div>
-
+                                <div className="relative pl-6 border-l-2 border-rose-200"><Quote size={32} className="absolute -top-4 -left-5 text-rose-200/50 fill-rose-100" /><p className="text-gray-600 text-[15px] leading-8 font-light whitespace-pre-line">{aiFeedback.content}</p></div>
                                 {(aiFeedback as any).actionItem && (
                                     <div className="bg-gradient-to-r from-rose-50/80 to-white border border-rose-100 rounded-2xl p-5 flex items-start gap-4 shadow-sm">
-                                        <div className="mt-1 bg-rose-500 text-white text-[10px] px-2.5 py-1 rounded-md font-bold shrink-0 tracking-wider shadow-sm">
-                                            ACTION
-                                        </div>
-                                        <p className="text-rose-800 font-medium text-base">
-                                            {(aiFeedback as any).actionItem}
-                                        </p>
+                                        <div className="mt-1 bg-rose-500 text-white text-[10px] px-2.5 py-1 rounded-md font-bold shrink-0 tracking-wider shadow-sm">ACTION</div>
+                                        <p className="text-rose-800 font-medium text-base">{(aiFeedback as any).actionItem}</p>
                                     </div>
                                 )}
-
                                 {(aiFeedback as any).historyStory && (
                                     <div className="pt-2">
                                         <div className="bg-blue-50/60 rounded-xl p-5 border border-blue-100/50 flex items-start gap-4 text-sm text-gray-600 group hover:bg-blue-50 transition-colors">
-                                             <div className="bg-white p-2 rounded-full shadow-sm text-blue-400 group-hover:scale-110 transition-transform mt-0.5">
-                                                <BookOpen size={20} />
-                                             </div>
-                                             <div className="flex-1">
-                                                 <span className="text-[10px] font-bold text-blue-400 uppercase tracking-widest block mb-2">History & Culture</span>
-                                                 <span className="leading-relaxed font-light text-gray-700 text-[15px]">{(aiFeedback as any).historyStory}</span>
-                                             </div>
+                                             <div className="bg-white p-2 rounded-full shadow-sm text-blue-400 group-hover:scale-110 transition-transform mt-0.5"><BookOpen size={20} /></div>
+                                             <div className="flex-1"><span className="text-[10px] font-bold text-blue-400 uppercase tracking-widest block mb-2">History & Culture</span><span className="leading-relaxed font-light text-gray-700 text-[15px]">{(aiFeedback as any).historyStory}</span></div>
                                         </div>
                                     </div>
                                 )}
-
                                 {(aiFeedback as any).quote && (
                                     <div className="mt-6 pt-6 border-t border-rose-100/50 flex flex-col items-center justify-center text-center">
-                                        <Feather size={18} className="text-rose-300 mb-2" />
-                                        <p className="font-serif italic text-gray-600 text-lg leading-relaxed">
-                                            "{(aiFeedback as any).quote}"
-                                        </p>
+                                        <Feather size={18} className="text-rose-300 mb-2" /><p className="font-serif italic text-gray-600 text-lg leading-relaxed">"{(aiFeedback as any).quote}"</p>
                                     </div>
                                 )}
                             </div>
@@ -705,81 +644,26 @@ const App: React.FC = () => {
 
       </main>
 
-      {/* Floating Action Button Bar */}
       <div className="fixed bottom-0 left-0 w-full p-4 bg-white/70 backdrop-blur-xl border-t border-white/50 z-20 shadow-[0_-10px_30px_rgba(0,0,0,0.03)]">
         <div className="max-w-md mx-auto">
             {isCompleted ? (
-                <button
-                    onClick={toggleComplete}
-                    className="w-full flex items-center justify-center gap-2 py-4 rounded-2xl bg-gray-100/80 text-gray-500 font-bold text-lg shadow-inner active:scale-98 transition-all hover:bg-gray-200/80"
-                >
+                <button onClick={toggleComplete} className="w-full flex items-center justify-center gap-2 py-4 rounded-2xl bg-gray-100/80 text-gray-500 font-bold text-lg shadow-inner active:scale-98 transition-all hover:bg-gray-200/80">
                     <Undo2 size={20} /> 撤銷完成 (Undo)
                 </button>
             ) : (
-                <button
-                    onClick={toggleComplete}
-                    className="w-full flex items-center justify-center gap-2 py-4 rounded-2xl bg-gradient-to-r from-rose-400 to-rose-600 text-white font-bold text-lg shadow-lg shadow-rose-200 hover:shadow-rose-300 hover:-translate-y-0.5 active:scale-95 transition-all"
-                >
+                <button onClick={toggleComplete} className="w-full flex items-center justify-center gap-2 py-4 rounded-2xl bg-gradient-to-r from-rose-400 to-rose-600 text-white font-bold text-lg shadow-lg shadow-rose-200 hover:shadow-rose-300 hover:-translate-y-0.5 active:scale-95 transition-all">
                     <CheckCircle size={24} /> 完成今日護膚
                 </button>
             )}
         </div>
       </div>
 
-      {/* Modals */}
-      <AddProductModal
-        isOpen={isModalOpen}
-        onClose={handleCloseModal}
-        onAdd={addProduct}
-        onUpdate={updateProduct}
-        initialProduct={editingProduct}
-      />
-
-      <ProductManager
-        isOpen={isProductManagerOpen}
-        onClose={() => setIsProductManagerOpen(false)}
-        products={products}
-        onRemove={removeProduct}
-        onEdit={handleEditProduct}
-        onOpenAddModal={() => {
-            setEditingProduct(null);
-            setIsProductManagerOpen(false);
-            setIsModalOpen(true);
-        }}
-      />
-
-      <MachineSelectorModal
-        isOpen={isMachineModalOpen}
-        onClose={() => setIsMachineModalOpen(false)}
-        selectedDate={selectedDate}
-        currentModes={activeMachineModes}
-        defaultModes={defaultRoutine.machineModes}
-        skinConditions={skinConditionInput}
-        onSave={handleSaveMachineModes}
-      />
-
-      <WeeklyScheduleModal
-        isOpen={isScheduleModalOpen}
-        onClose={() => setIsScheduleModalOpen(false)}
-        schedule={weeklySchedule}
-        onSave={handleSaveSchedule}
-      />
-
-      <MonthCalendar
-        isOpen={isCalendarOpen}
-        onClose={() => setIsCalendarOpen(false)}
-        logs={logs}
-        selectedDate={selectedDate}
-        onSelectDate={handleDateChange}
-      />
-
-      {/* 設定與備份 Modal */}
-      <SettingsModal
-        isOpen={isSettingsOpen}
-        onClose={() => setIsSettingsOpen(false)}
-        onImport={handleImportData}
-        onExport={handleExportData}
-      />
+      <AddProductModal isOpen={isModalOpen} onClose={handleCloseModal} onAdd={handleAddProduct} onUpdate={handleUpdateProduct} initialProduct={editingProduct} />
+      <ProductManager isOpen={isProductManagerOpen} onClose={() => setIsProductManagerOpen(false)} products={products} onRemove={handleRemoveProduct} onEdit={handleEditProduct} onOpenAddModal={() => { setEditingProduct(null); setIsProductManagerOpen(false); setIsModalOpen(true); }} />
+      <MachineSelectorModal isOpen={isMachineModalOpen} onClose={() => setIsMachineModalOpen(false)} selectedDate={selectedDate} currentModes={activeMachineModes} defaultModes={defaultRoutine.machineModes} skinConditions={skinConditionInput} onSave={handleSaveMachineModes} />
+      <WeeklyScheduleModal isOpen={isScheduleModalOpen} onClose={() => setIsScheduleModalOpen(false)} schedule={weeklySchedule} onSave={handleSaveSchedule} />
+      <MonthCalendar isOpen={isCalendarOpen} onClose={() => setIsCalendarOpen(false)} logs={logs} selectedDate={selectedDate} onSelectDate={handleDateChange} />
+      <SettingsModal isOpen={isSettingsOpen} onClose={() => setIsSettingsOpen(false)} onImport={handleImportData} onExport={handleExportData} />
 
     </div>
   );
