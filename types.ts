@@ -28,7 +28,7 @@ export interface DailyLog {
   note: string;
   skinConditions?: string[]; // e.g. ["乾燥", "泛紅"]
   
-  // [修正] 這裡要支援物件格式的 AI 回應
+  // 支援物件格式的 AI 回應
   aiResponse?: {
       title: string;
       content: string;
@@ -37,9 +37,11 @@ export interface DailyLog {
       quote?: string;
   };
   
+  // 舊版資料相容
+  aiFeedback?: string;
+
   machineModes?: MachineMode[]; // Custom overrides for the day
   
-  // [修正] 新增這兩個欄位以支援「每日獨立作業」
   customRoutine?: Product[];    // 當天專屬的產品清單
   routineSnapshot?: Product[];  // 舊版相容用的快照
   
