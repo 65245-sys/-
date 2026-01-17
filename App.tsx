@@ -362,7 +362,11 @@ const App: React.FC = () => {
       <div className="fixed top-0 left-0 right-0 z-40 w-full transition-all duration-300">
         
         {/* Top Bar (Always Visible) */}
-        <header className="px-6 py-4 flex justify-between items-center shadow-sm border-b border-white/40 glass-panel relative z-20 bg-white/80 backdrop-blur-md">
+        <header
+            // [FIXED] Dynamic Island/Notch Safe Area Padding
+            style={{ paddingTop: 'calc(env(safe-area-inset-top) + 1rem)' }}
+            className="px-6 pb-4 flex justify-between items-center shadow-sm border-b border-white/40 glass-panel relative z-20 bg-white/80 backdrop-blur-md"
+        >
           {/* Title - Clickable to toggle */}
           <div
             onClick={() => setIsTimelineOpen(!isTimelineOpen)}
@@ -417,8 +421,9 @@ const App: React.FC = () => {
 
       {/* 2. Main Content (Dynamic Top Padding) */}
       <main
+        // [FIXED] Increased padding to accommodate taller header with safe area
         className={`max-w-6xl mx-auto px-4 sm:px-6 py-8 transition-all duration-500 ease-in-out
-        ${isTimelineOpen ? 'pt-56' : 'pt-28'}`}
+        ${isTimelineOpen ? 'pt-72' : 'pt-36'}`}
       >
         
         {/* Top Section: Date Info & Machine */}
