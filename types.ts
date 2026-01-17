@@ -1,4 +1,3 @@
-
 export type RoutineType = 'MORNING' | 'EVENING';
 
 export type ProductTiming = 'MORNING' | 'EVENING' | 'BOTH';
@@ -13,7 +12,7 @@ export interface Product {
   order: number; // For sorting sequence
   
   // Legacy/Optional for display badges or migration
-  originalCategory?: string; 
+  originalCategory?: string;
   isCustom?: boolean;
 }
 
@@ -28,8 +27,22 @@ export interface DailyLog {
   completed: boolean;
   note: string;
   skinConditions?: string[]; // e.g. ["乾燥", "泛紅"]
-  aiFeedback?: string;
+  
+  // [修正] 這裡要支援物件格式的 AI 回應
+  aiResponse?: {
+      title: string;
+      content: string;
+      actionItem?: string;
+      historyStory?: string;
+      quote?: string;
+  };
+  
   machineModes?: MachineMode[]; // Custom overrides for the day
+  
+  // [修正] 新增這兩個欄位以支援「每日獨立作業」
+  customRoutine?: Product[];    // 當天專屬的產品清單
+  routineSnapshot?: Product[];  // 舊版相容用的快照
+  
   timestamp?: number;
 }
 

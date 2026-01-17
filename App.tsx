@@ -90,7 +90,6 @@ const SettingsModal = ({ isOpen, onClose, onImport, onExport }: { isOpen: boolea
 const App: React.FC = () => {
   // State
   const [selectedDate, setSelectedDate] = useState<Date>(new Date());
-  // logs 現在會包含: aiResponse, customRoutine (當天的獨立保養品清單)
   const [logs, setLogs] = useState<DailyLogsMap>({});
   const [products, setProducts] = useState<Product[]>([]);
   const [weeklySchedule, setWeeklySchedule] = useState<Record<number, DayRoutine>>(DEFAULT_WEEKLY_SCHEDULE);
@@ -133,7 +132,6 @@ const App: React.FC = () => {
   }, [selectedDate]);
 
   // --- Display Logic ---
-  // 優先顯示「當天專屬清單」，若無則顯示「快照」，最後才顯示「全域」
   const displayProducts = useMemo(() => {
       if (currentLog?.customRoutine) return currentLog.customRoutine;
       if (currentLog?.routineSnapshot) return currentLog.routineSnapshot;
@@ -146,14 +144,30 @@ const App: React.FC = () => {
   useEffect(() => {
     const savedLogs = localStorage.getItem('skin_logs');
     if (savedLogs) setLogs(JSON.parse(savedLogs));
+
     const savedSchedule = localStorage.getItem('skin_weekly_schedule');
     if (savedSchedule) setWeeklySchedule(JSON.parse(savedSchedule));
+
     const savedUnifiedProducts = localStorage.getItem('skin_products_unified');
+    let loadedProducts: Product[] = [];
+    
     if (savedUnifiedProducts) {
-      setProducts(JSON.parse(savedUnifiedProducts));
+      loadedProducts = JSON.parse(savedUnifiedProducts);
     } else {
-      setProducts(INITIAL_PRODUCTS);
+      loadedProducts = [...INITIAL_PRODUCTS];
     }
+
+    // [修正重點] 資料清洗：確保所有產品都有 days 屬性 (防止白屏)
+    loadedProducts = loadedProducts.map((p, index) => ({
+        ...p,
+        name: p.name || '未命名產品',
+        timing: ((p.timing as string) === 'POST_BOOSTER' ? 'EVENING' : p.timing) as any,
+        productType: p.productType || analyzeProductInput(p.name || '未命名產品').productType,
+        order: typeof p.order === 'number' ? p.order : index,
+        days: Array.isArray(p.days) ? p.days : [0, 1, 2, 3, 4, 5, 6] // 關鍵修復：若 days 遺失，預設每天
+    }));
+
+    setProducts(loadedProducts);
     isLoaded.current = true;
   }, []);
 
@@ -170,11 +184,18 @@ const App: React.FC = () => {
   useEffect(() => {
     setNoteInput(logs[dateKey]?.note || '');
     setSkinConditionInput(logs[dateKey]?.skinConditions || []);
-    if (logs[dateKey]?.aiResponse) setAiFeedback(logs[dateKey].aiResponse);
-    else setAiFeedback(null);
+    // [修正] 相容舊的字串格式和新的物件格式
+    if (logs[dateKey]?.aiResponse) {
+        setAiFeedback(logs[dateKey].aiResponse);
+    } else if (typeof logs[dateKey]?.aiFeedback === 'string') {
+        // 舊資料相容
+        setAiFeedback({ title: 'AI 紀錄', content: logs[dateKey].aiFeedback as string });
+    } else {
+        setAiFeedback(null);
+    }
   }, [dateKey, logs]);
 
-  // Handlers (Export/Import/AI/ToggleComplete)
+  // Handlers
   const handleExportData = () => {
     const data = {
         logs,
@@ -230,7 +251,6 @@ const App: React.FC = () => {
     setLogs(prev => {
         const currentData = prev[dateKey];
         const isNowCompleted = !currentData?.completed;
-        // 完成時，如果沒有專屬清單，就存一份快照
         let snapshot = currentData?.customRoutine || currentData?.routineSnapshot;
         if (isNowCompleted && !snapshot) snapshot = [...products];
         return {
@@ -310,7 +330,6 @@ const App: React.FC = () => {
   // ⚡️ 核心邏輯：產品操作分流
   // ========================================================
 
-  // 從「當日儀式 (Ritual)」中刪除 -> 只影響當天 (customRoutine)
   const handleRemoveFromRitual = (id: string) => {
       const newList = displayProducts.filter(p => p.id !== id);
       setLogs(prev => ({
@@ -319,12 +338,10 @@ const App: React.FC = () => {
       }));
   };
 
-  // 從「保養櫃 (Cabinet)」中刪除 -> 影響全域 (Products)，但不影響過去
   const handleRemoveGlobal = (id: string) => {
       setProducts(prev => prev.filter(p => p.id !== id));
   };
 
-  // 在儀式中「排序」 -> 影響當天，若非過去則同步全域
   const handleReorderRitual = (id: string, direction: 'up' | 'down') => {
       const list = [...displayProducts];
       const sortedList = list.sort((a, b) => a.order - b.order);
@@ -342,18 +359,15 @@ const App: React.FC = () => {
       }
       
       const newList = [...sortedList];
-      // 1. 更新當天
       setLogs(prev => ({
           ...prev,
           [dateKey]: { ...prev[dateKey], customRoutine: newList }
       }));
-      // 2. 如果不是過去，同步全域順序
       if (!isPastDate) {
           setProducts(newList);
       }
   };
 
-  // 選擇現有產品加入當天 (含 Smart Sort)
   const handleSelectProduct = (p: Product) => {
       const currentList = displayProducts;
       if (currentList.some(exist => exist.id === p.id)) {
@@ -384,7 +398,6 @@ const App: React.FC = () => {
       setIsProductSelectorOpen(false);
   };
 
-  // 建立新產品 (加入全域 -> 並且自動加入當天)
   const handleCreateNewProduct = (p: Product) => {
       setProducts(prev => {
           const maxOrder = prev.length > 0 ? Math.max(...prev.map(x => x.order)) : 0;
@@ -409,10 +422,8 @@ const App: React.FC = () => {
       setEditingProduct(null);
   };
 
-  // Auto Sort Handler (Ritual)
   const handleAutoSort = (scope: 'MORNING' | 'EVENING') => {
     setIsSorting(true);
-    // 這裡我們直接對當前的 displayProducts 進行排序
     const currentList = [...displayProducts];
     const sortedList = currentList.sort((a, b) => {
         const wA = getOptimalProductOrder(a.productType);
@@ -421,16 +432,13 @@ const App: React.FC = () => {
         return a.name.localeCompare(b.name, 'zh-TW');
     });
     
-    // 重新編號
     const finalList = sortedList.map((item, idx) => ({ ...item, order: idx }));
 
-    // 更新當天紀錄
     setLogs(prev => ({
         ...prev,
         [dateKey]: { ...prev[dateKey], customRoutine: finalList }
     }));
 
-    // 若非過去，同步到全域
     if (!isPastDate) {
         setProducts(finalList);
     }
@@ -451,7 +459,6 @@ const App: React.FC = () => {
             </div>
             <p className="text-[10px] text-rose-400 font-bold tracking-[0.2em] uppercase mt-1 group-hover:text-rose-500 transition-colors">Noble Edition</p>
           </div>
-          
           <div className="flex gap-3">
             <button onClick={() => setIsProductManagerOpen(true)} className="bg-white/50 text-rose-400 p-2.5 rounded-full hover:bg-white hover:text-rose-500 transition-all shadow-sm border border-rose-100 hover:shadow-md"><Archive size={20} /></button>
             <button onClick={() => setIsCalendarOpen(true)} className="bg-white/50 text-rose-400 p-2.5 rounded-full hover:bg-white hover:text-rose-500 transition-all shadow-sm border border-rose-100 hover:shadow-md"><Calendar size={20} /></button>
