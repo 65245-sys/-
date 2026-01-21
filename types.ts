@@ -11,13 +11,13 @@ export interface Product {
   productType?: string; // e.g. "精華液", "乳霜", "化妝水"
   order: number; // For sorting sequence
   
-  // Legacy/Optional for display badges or migration
+  // Legacy/Optional
   originalCategory?: string;
   isCustom?: boolean;
 }
 
 export interface MachineMode {
-  id: string; // Add ID for easier selection
+  id: string;
   name: string;
   color: string;
   description: string;
@@ -26,9 +26,9 @@ export interface MachineMode {
 export interface DailyLog {
   completed: boolean;
   note: string;
-  skinConditions?: string[]; // e.g. ["乾燥", "泛紅"]
+  skinConditions?: string[];
   
-  // 支援物件格式的 AI 回應
+  // [修正] 支援物件格式的 AI 回應
   aiResponse?: {
       title: string;
       content: string;
@@ -37,11 +37,12 @@ export interface DailyLog {
       quote?: string;
   };
   
-  // 舊版資料相容
+  // 舊版資料相容 (如果有的話)
   aiFeedback?: string;
 
-  machineModes?: MachineMode[]; // Custom overrides for the day
+  machineModes?: MachineMode[];
   
+  // [修正] 新增這兩個欄位以支援「每日獨立作業」
   customRoutine?: Product[];    // 當天專屬的產品清單
   routineSnapshot?: Product[];  // 舊版相容用的快照
   

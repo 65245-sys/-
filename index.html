@@ -3,7 +3,6 @@
   <head>
     <meta charset="UTF-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1, maximum-scale=1, user-scalable=no, viewport-fit=cover" />
-    
     <meta name="apple-mobile-web-app-capable" content="yes" />
     <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent" />
     <title>My Skin Diary (Noble Edition)</title>
@@ -12,9 +11,11 @@
     <link rel="apple-touch-icon" sizes="180x180" href="https://i.ibb.co/4ZCSZv4G/Gemini-Generated-Image-7nlvrk7nlvrk7nlv.png">
 
     <script src="https://cdn.tailwindcss.com"></script>
+    
     <link rel="preconnect" href="https://fonts.googleapis.com">
     <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
     <link href="https://fonts.googleapis.com/css2?family=Noto+Sans+TC:wght@300;400;500;700&family=Playfair+Display:ital,wght@0,400;0,600;0,700;1,400&display=swap" rel="stylesheet">
+    
     <script>
       tailwind.config = {
         theme: {
@@ -24,29 +25,8 @@
               serif: ['"Playfair Display"', 'serif'],
             },
             colors: {
-              rose: {
-                50: '#fff0f3',
-                100: '#ffe3e8',
-                200: '#ffc9d4',
-                300: '#ff9eb0',
-                400: '#ff6b8b',
-                500: '#f43f68',
-                600: '#e11d4e',
-                800: '#9f1239',
-                900: '#881337',
-              },
-              champagne: {
-                100: '#fcf8e8',
-                200: '#f7efc9',
-                300: '#ebd896',
-                400: '#e0c060',
-                500: '#d4a736',
-              }
-            },
-            backgroundImage: {
-              'luxury-gradient': 'linear-gradient(135deg, #FFF5F7 0%, #FFF0F5 50%, #FFE4E6 100%)',
-              'glass': 'linear-gradient(145deg, rgba(255, 255, 255, 0.9) 0%, rgba(255, 255, 255, 0.6) 100%)',
-              'shimmer': 'linear-gradient(45deg, rgba(255,255,255,0) 40%, rgba(255,255,255,0.5) 50%, rgba(255,255,255,0) 60%)',
+              rose: { 50: '#fff0f3', 100: '#ffe3e8', 200: '#ffc9d4', 300: '#ff9eb0', 400: '#ff6b8b', 500: '#f43f68', 600: '#e11d4e', 800: '#9f1239', 900: '#881337' },
+              champagne: { 100: '#fcf8e8', 200: '#f7efc9', 300: '#ebd896', 400: '#e0c060', 500: '#d4a736' }
             }
           }
         }
@@ -60,22 +40,13 @@
           radial-gradient(at 50% 100%, hsla(340, 82%, 96%, 1) 0, transparent 50%),
           radial-gradient(at 100% 0%, hsla(35, 100%, 96%, 1) 0, transparent 50%);
         background-attachment: fixed;
-        /* Safe area handling for notched iPhones in standalone mode */
         padding-top: env(safe-area-inset-top);
         padding-bottom: env(safe-area-inset-bottom);
         padding-left: env(safe-area-inset-left);
         padding-right: env(safe-area-inset-right);
       }
-      /* Hide scrollbar for Chrome, Safari and Opera */
-      .no-scrollbar::-webkit-scrollbar {
-          display: none;
-      }
-      /* Hide scrollbar for IE, Edge and Firefox */
-      .no-scrollbar {
-          -ms-overflow-style: none;  /* IE and Edge */
-          scrollbar-width: none;  /* Firefox */
-      }
-      
+      .no-scrollbar::-webkit-scrollbar { display: none; }
+      .no-scrollbar { -ms-overflow-style: none; scrollbar-width: none; }
       .glass-panel {
         background: rgba(255, 255, 255, 0.7);
         backdrop-filter: blur(12px);
@@ -83,27 +54,26 @@
         border: 1px solid rgba(255, 255, 255, 0.8);
         box-shadow: 0 4px 30px rgba(0, 0, 0, 0.03);
       }
-      
-      .text-glow {
-        text-shadow: 0 0 20px rgba(255, 107, 139, 0.3);
-      }
+      .text-glow { text-shadow: 0 0 20px rgba(255, 107, 139, 0.3); }
     </style>
-  <script type="importmap">
-{
-  "imports": {
-    "uuid": "https://esm.sh/uuid@^13.0.0",
-    "lucide-react": "https://esm.sh/lucide-react@^0.562.0",
-    "react-dom/": "https://esm.sh/react-dom@^19.2.3/",
-    "react": "https://esm.sh/react@^19.2.3",
-    "react/": "https://esm.sh/react@^19.2.3/",
-    "@google/genai": "https://esm.sh/@google/genai@^1.36.0"
-  }
-}
-</script>
-<link rel="stylesheet" href="/index.css">
-</head>
+    
+    <script type="importmap">
+    {
+      "imports": {
+        "uuid": "https://esm.sh/uuid@^13.0.0",
+        "lucide-react": "https://esm.sh/lucide-react@^0.562.0",
+        "react-dom/client": "https://esm.sh/react-dom@^18.2.0/client",
+        "react-dom": "https://esm.sh/react-dom@^18.2.0",
+        "react": "https://esm.sh/react@^18.2.0",
+        "date-fns": "https://esm.sh/date-fns@^4.1.0",
+        "date-fns/locale": "https://esm.sh/date-fns@^4.1.0/locale"
+      }
+    }
+    </script>
+    
+    </head>
   <body>
     <div id="root"></div>
-  <script type="module" src="/index.tsx"></script>
-</body>
+    <script type="module" src="/index.tsx"></script>
+  </body>
 </html>

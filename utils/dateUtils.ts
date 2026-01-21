@@ -1,6 +1,6 @@
 // utils/dateUtils.ts
 
-// 取得顯示用的日期字串 (例如: "1月19日 週五")
+// 取得顯示用的日期字串
 export const getDisplayDate = (date: Date): string => {
     const m = date.getMonth() + 1;
     const d = date.getDate();
@@ -10,7 +10,6 @@ export const getDisplayDate = (date: Date): string => {
 };
 
 // 取得資料庫存檔用的 Key (YYYY-MM-DD)
-// 確保使用當地時間，避免時區問題導致日期跳掉
 export const formatDateKey = (date: Date): string => {
     const y = date.getFullYear();
     const m = String(date.getMonth() + 1).padStart(2, '0');
@@ -25,13 +24,13 @@ export const isSameDay = (d1: Date, d2: Date): boolean => {
            d1.getDate() === d2.getDate();
 };
 
-// 取得時間軸需要的日期陣列 (前後 14 天)
+// 取得時間軸需要的日期陣列
 export const getTimelineDates = (baseDate: Date = new Date()): Date[] => {
     const dates: Date[] = [];
     const start = new Date(baseDate);
-    start.setDate(baseDate.getDate() - 14); // 前 14 天
+    start.setDate(baseDate.getDate() - 14);
 
-    for (let i = 0; i < 29; i++) { // 前14 + 今天 + 後14 = 29
+    for (let i = 0; i < 29; i++) {
         const d = new Date(start);
         d.setDate(start.getDate() + i);
         dates.push(d);

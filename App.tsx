@@ -133,7 +133,7 @@ const App: React.FC = () => {
 
   // --- Display Logic ---
   const displayProducts = useMemo(() => {
-      // 資料清洗：確保取出的產品資料都有 days 欄位
+      // 資料清洗
       const sanitize = (list?: Product[]) => {
           if (!list) return undefined;
           return list.map(p => ({
@@ -195,11 +195,6 @@ const App: React.FC = () => {
       setWeeklySchedule(newSchedule);
       localStorage.setItem('skin_weekly_schedule', JSON.stringify(newSchedule));
       setIsScheduleModalOpen(false);
-  };
-
-  // ✅ 關鍵：這就是之前消失的函式，現在補回來了！
-  const handleDateChange = (date: Date) => {
-      setSelectedDate(date);
   };
 
   // --- Date Change: Load Data ---
@@ -425,7 +420,7 @@ const App: React.FC = () => {
       <ProductManager isOpen={isProductSelectorOpen} onClose={() => setIsProductSelectorOpen(false)} products={products} onRemove={() => {}} onEdit={() => {}} isSelectMode={true} onSelect={handleSelectProduct} onOpenAddModal={() => { setEditingProduct(null); setIsProductSelectorOpen(false); setIsModalOpen(true); }} />
       <MachineSelectorModal isOpen={isMachineModalOpen} onClose={() => setIsMachineModalOpen(false)} selectedDate={selectedDate} currentModes={activeMachineModes} defaultModes={defaultRoutine.machineModes} skinConditions={skinConditionInput} onSave={handleSaveMachineModes} />
       <WeeklyScheduleModal isOpen={isScheduleModalOpen} onClose={() => setIsScheduleModalOpen(false)} schedule={weeklySchedule} onSave={handleSaveSchedule} />
-      <MonthCalendar isOpen={isCalendarOpen} onClose={() => setIsCalendarOpen(false)} logs={logs} selectedDate={selectedDate} onSelectDate={handleDateChange} />
+      <MonthCalendar isOpen={isCalendarOpen} onClose={() => setIsCalendarOpen(false)} logs={logs} selectedDate={selectedDate} onSelectDate={setSelectedDate} />
       <SettingsModal isOpen={isSettingsOpen} onClose={() => setIsSettingsOpen(false)} onImport={handleImportData} onExport={handleExportData} />
     </div>
   );
