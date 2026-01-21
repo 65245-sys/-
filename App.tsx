@@ -131,8 +131,9 @@ const App: React.FC = () => {
       return current < today;
   }, [selectedDate]);
 
-  // --- Display Logic (含資料清洗防呆) ---
+  // --- Display Logic ---
   const displayProducts = useMemo(() => {
+      // 資料清洗：確保取出的產品資料都有 days 欄位
       const sanitize = (list?: Product[]) => {
           if (!list) return undefined;
           return list.map(p => ({
@@ -196,11 +197,12 @@ const App: React.FC = () => {
       setIsScheduleModalOpen(false);
   };
 
-  // --- 補上這個遺失的函式 ---
+  // ✅ [修復] 補上遺失的 handleDateChange 函式
   const handleDateChange = (date: Date) => {
       setSelectedDate(date);
   };
 
+  // --- Date Change: Load Data ---
   useEffect(() => {
     setNoteInput(logs[dateKey]?.note || '');
     setSkinConditionInput(logs[dateKey]?.skinConditions || []);
