@@ -1,20 +1,27 @@
 import React, { useState, useMemo } from 'react';
-import { X, ChevronLeft, ChevronRight, Check } from 'lucide-react';
+import { X, ChevronLeft, ChevronRight } from 'lucide-react';
 import { DailyLogsMap } from '../types';
 
-// --- 純 JS 日期工具 (本地定義) ---
+// --- 1. 內建日期工具 (切斷外部依賴，確保建置成功) ---
+// 取得該月有幾天
 const getDaysInMonth = (year: number, month: number) => new Date(year, month + 1, 0).getDate();
+// 取得該月第一天是星期幾
 const getFirstDayOfMonth = (year: number, month: number) => new Date(year, month, 1).getDay();
-
+// 格式化日期 Key (YYYY-MM-DD)
 const formatDateKey = (year: number, month: number, day: number) => {
     const m = String(month + 1).padStart(2, '0');
     const d = String(day).padStart(2, '0');
     return `${year}-${m}-${d}`;
 };
+const isSameDay = (d1: Date, d2: Date) => {
+    return d1.getFullYear() === d2.getFullYear() &&
+           d1.getMonth() === d2.getMonth() &&
+           d1.getDate() === d2.getDate();
+};
 
 const MONTH_NAMES = ['1月', '2月', '3月', '4月', '5月', '6月', '7月', '8月', '9月', '10月', '11月', '12月'];
 const WEEK_DAYS = ['日', '一', '二', '三', '四', '五', '六'];
-// ------------------------------------
+// ----------------------------------------------------
 
 interface Props {
   isOpen: boolean;
@@ -25,7 +32,6 @@ interface Props {
 }
 
 const MonthCalendar: React.FC<Props> = ({ isOpen, onClose, logs, selectedDate, onSelectDate }) => {
-  // 記錄目前檢視的年份與月份
   const [viewDate, setViewDate] = useState(new Date(selectedDate));
 
   if (!isOpen) return null;
@@ -33,9 +39,13 @@ const MonthCalendar: React.FC<Props> = ({ isOpen, onClose, logs, selectedDate, o
   const year = viewDate.getFullYear();
   const month = viewDate.getMonth(); // 0-11
 
-  // 切換月份
   const handlePrevMonth = () => setViewDate(new Date(year, month - 1, 1));
   const handleNextMonth = () => setViewDate(new Date(year, month + 1, 1));
+
+  const handleDayClick = (date: Date) => {
+      onSelectDate(date);
+      onClose();
+  };
 
   // 產生月曆格子
   const calendarDays = useMemo(() => {
@@ -57,84 +67,70 @@ const MonthCalendar: React.FC<Props> = ({ isOpen, onClose, logs, selectedDate, o
       return days;
   }, [year, month]);
 
-  const handleDayClick = (date: Date) => {
-      onSelectDate(date);
-      onClose();
-  };
-
   return (
     <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-rose-950/20 backdrop-blur-sm animate-[fadeIn_0.2s_ease-out]">
       <div className="bg-white rounded-3xl shadow-2xl w-full max-w-sm overflow-hidden animate-[scaleUp_0.2s_ease-out]">
         
         {/* Header */}
-        <div className="p-6 border-b border-gray-100 flex justify-between items-center bg-white">
-            <h3 className="text-xl font-serif font-bold text-rose-900">
-                {year}年 {MONTH_NAMES[month]}
+        <div className="p-5 flex justify-between items-center bg-gradient-to-r from-rose-50/50 to-white border-b border-rose-50">
+            <button onClick={handlePrevMonth} className="p-2 hover:bg-white hover:shadow-sm rounded-full text-gray-400 transition-all">
+                <ChevronLeft size={20} />
+            </button>
+            <h3 className="text-lg font-bold text-gray-800 font-serif tracking-wide">
+                {year} <span className="text-rose-400">.</span> {month + 1}
             </h3>
-            <div className="flex gap-2">
-                <button onClick={handlePrevMonth} className="p-1.5 hover:bg-gray-100 rounded-full text-gray-400 hover:text-rose-500 transition-colors">
-                    <ChevronLeft size={20} />
-                </button>
-                <button onClick={handleNextMonth} className="p-1.5 hover:bg-gray-100 rounded-full text-gray-400 hover:text-rose-500 transition-colors">
-                    <ChevronRight size={20} />
-                </button>
-                <button onClick={onClose} className="p-1.5 hover:bg-gray-100 rounded-full text-gray-400 hover:text-gray-600 transition-colors ml-2">
-                    <X size={20} />
-                </button>
-            </div>
+            <button onClick={handleNextMonth} className="p-2 hover:bg-white hover:shadow-sm rounded-full text-gray-400 transition-all">
+                <ChevronRight size={20} />
+            </button>
+            <button onClick={onClose} className="absolute right-4 top-5 text-gray-300 hover:text-gray-500">
+                <X size={20} />
+            </button>
         </div>
 
-        {/* Body */}
-        <div className="p-6">
-            {/* Weekday Headers */}
-            <div className="grid grid-cols-7 mb-4 text-center">
-                {WEEK_DAYS.map((day, idx) => (
-                    <div key={day} className={`text-xs font-bold ${idx === 0 || idx === 6 ? 'text-rose-400' : 'text-gray-400'}`}>
-                        {day}
-                    </div>
-                ))}
-            </div>
-
-            {/* Days Grid */}
-            <div className="grid grid-cols-7 gap-y-4 gap-x-2">
-                {calendarDays.map((date, index) => {
-                    if (!date) return <div key={`empty-${index}`} />;
-
-                    const dateStr = formatDateKey(date.getFullYear(), date.getMonth(), date.getDate());
-                    const isToday = new Date().toDateString() === date.toDateString();
-                    const isSelected = selectedDate.toDateString() === date.toDateString();
-                    const isCompleted = logs[dateStr]?.completed;
-
-                    return (
-                        <button
-                            key={dateStr}
-                            onClick={() => handleDayClick(date)}
-                            className={`
-                                relative h-10 rounded-xl flex flex-col items-center justify-center text-sm font-medium transition-all
-                                ${isSelected 
-                                    ? 'bg-rose-500 text-white shadow-md shadow-rose-200 scale-110 z-10' 
-                                    : 'text-gray-700 hover:bg-gray-50'}
-                                ${isToday && !isSelected ? 'text-rose-500 font-bold' : ''}
-                            `}
-                        >
-                            <span>{date.getDate()}</span>
-                            
-                            {/* Dots Indicators */}
-                            <div className="flex gap-0.5 mt-0.5 h-1.5">
-                                {isCompleted && (
-                                    <div className={`w-1 h-1 rounded-full ${isSelected ? 'bg-white' : 'bg-emerald-400'}`} />
-                                )}
-                                {isToday && !isSelected && !isCompleted && (
-                                    <div className="w-1 h-1 rounded-full bg-rose-400" />
-                                )}
-                            </div>
-                        </button>
-                    );
-                })}
-            </div>
+        {/* Weekday Headers */}
+        <div className="grid grid-cols-7 gap-1 px-4 pt-4 pb-2 text-center">
+            {WEEK_DAYS.map(d => (
+                <span key={d} className="text-xs text-gray-400 font-bold">{d}</span>
+            ))}
         </div>
-        
-        <div className="p-4 bg-gray-50 border-t border-gray-100 text-center">
+
+        {/* Days Grid */}
+        <div className="grid grid-cols-7 gap-2 px-4 pb-6">
+            {calendarDays.map((date, index) => {
+                if (!date) return <div key={`empty-${index}`} />;
+
+                const dateStr = formatDateKey(date.getFullYear(), date.getMonth(), date.getDate());
+                const isToday = isSameDay(date, new Date());
+                const isSelected = isSameDay(date, selectedDate);
+                const isCompleted = logs[dateStr]?.completed;
+
+                return (
+                    <button
+                        key={dateStr}
+                        onClick={() => handleDayClick(date)}
+                        className={`
+                            relative h-10 w-full rounded-full flex items-center justify-center text-sm font-medium transition-all duration-300
+                            ${isSelected 
+                                ? 'bg-rose-500 text-white shadow-lg shadow-rose-200 scale-105 z-10' 
+                                : 'text-gray-700 hover:bg-rose-50'}
+                            ${!isSelected && isToday ? 'ring-2 ring-rose-400 bg-rose-50 text-rose-600 font-bold' : ''}
+                        `}
+                    >
+                        {date.getDate()}
+                        
+                        {/* Completed Indicator */}
+                        {isCompleted && (
+                            <div className={`
+                                absolute bottom-1 w-1.5 h-1.5 rounded-full shadow-sm
+                                ${isSelected ? 'bg-white' : 'bg-green-500 ring-1 ring-white'}
+                            `} />
+                        )}
+                    </button>
+                );
+            })}
+        </div>
+
+        <div className="p-4 bg-gray-50/50 border-t border-gray-100 text-center">
             <button
                 onClick={() => { onSelectDate(new Date()); onClose(); }}
                 className="text-sm font-bold text-rose-500 hover:text-rose-600 transition-colors"
